@@ -45,11 +45,53 @@ const MAX_DEPTH = 12;
 const MAX_PART_BYTES = 256_000;
 const MAX_MESSAGE_BYTES = 1_000_000;
 
-function decodeBase64Url(data: string): string {
+function decodeBase64Url(data: string): Buffer {
   if (!/^[A-Za-z0-9_-]*={0,2}$/.test(data)) throw new Error("Invalid MIME encoding");
   const bytes = Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
   if (bytes.byteLength > MAX_PART_BYTES) throw new Error("MIME part exceeds limit");
-  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  return bytes;
+}
+
+function charsetFromMimeType(mimeType: string | undefined): string {
+  const match = mimeType?.match(/;\s*charset\s*=\s*(?:"([^"]+)"|([^;\s]+))/iu);
+  return (match?.[1] ?? match?.[2] ?? "utf-8").trim();
+}
+
+function decodeBytes(bytes: Uint8Array, charset: string): string {
+  try {
+    return new TextDecoder(charset, { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error(`Invalid or unsupported MIME charset: ${charset}`);
+  }
+}
+
+function decodeQuotedPrintableWord(value: string): Uint8Array {
+  const bytes: number[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (character === "_") {
+      bytes.push(0x20);
+    } else if (character === "=" && /^[0-9A-Fa-f]{2}$/u.test(value.slice(index + 1, index + 3))) {
+      bytes.push(Number.parseInt(value.slice(index + 1, index + 3), 16));
+      index += 2;
+    } else {
+      bytes.push(character.charCodeAt(0));
+    }
+  }
+  return Uint8Array.from(bytes);
+}
+
+function decodeMimeHeader(value: string): string {
+  const unfolded = value.replace(/\r?\n[ \t]+/gu, " ");
+  return unfolded.replace(
+    /=\?([^?]+)\?([bq])\?([^?]*)\?=/giu,
+    (_word, charset: string, encoding: string, encoded: string) => {
+      const bytes = encoding.toLowerCase() === "b"
+        ? Buffer.from(encoded, "base64")
+        : decodeQuotedPrintableWord(encoded);
+      return decodeBytes(bytes, charset);
+    },
+  );
 }
 
 function visibleHtml(html: string): string {
@@ -71,10 +113,11 @@ export function parseGmailMessage(message: GmailMessage): ParsedMessage {
     parts += 1;
     if (depth > MAX_DEPTH || parts > MAX_PARTS) throw new Error("MIME structure exceeds limit");
     if (part.body?.data && !part.filename) {
-      const decoded = decodeBase64Url(part.body.data);
-      bytes += Buffer.byteLength(decoded);
+      const raw = decodeBase64Url(part.body.data);
+      bytes += raw.byteLength;
       if (bytes > MAX_MESSAGE_BYTES) throw new Error("Message exceeds limit");
       const mime = part.mimeType?.toLowerCase().split(";", 1)[0];
+      const decoded = decodeBytes(raw, charsetFromMimeType(part.mimeType));
       if (mime === "text/plain") plain.push(decoded);
       else if (mime === "text/html") html.push(visibleHtml(decoded));
     }
@@ -88,9 +131,9 @@ export function parseGmailMessage(message: GmailMessage): ParsedMessage {
     threadId: message.threadId,
     internalDate: Number.isFinite(timestamp) ? new Date(timestamp) : null,
     labelIds: message.labelIds ?? [],
-    from: headers.get("from") ?? "",
-    replyTo: headers.get("reply-to") ?? "",
-    subject: headers.get("subject") ?? "",
+    from: decodeMimeHeader(headers.get("from") ?? ""),
+    replyTo: decodeMimeHeader(headers.get("reply-to") ?? ""),
+    subject: decodeMimeHeader(headers.get("subject") ?? ""),
     bodyText: (plain.length ? plain : html).join("\n").trim(),
   };
 }

@@ -15,12 +15,13 @@
     "test": "bun test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:check": "bun run scripts/check-migrations.ts"
+    "db:check": "bun run scripts/check-migrations.ts",
+    "retention:run": "bun run scripts/run-retention.ts"
   },
   "dependencies": {
     "@neondatabase/auth": "0.4.2-beta",
     "@neondatabase/serverless": "1.0.2",
-    "drizzle-orm": "0.44.5",
+    "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "pg": "8.22.0",
     "react": "19.1.1",

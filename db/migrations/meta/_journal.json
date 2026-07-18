@@ -50,6 +50,13 @@
       "when": 1784412000000,
       "tag": "0007_oauth_state_processing_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784415600000,
+      "tag": "0008_message_state_retention",
+      "breakpoints": true
     }
   ]
 }

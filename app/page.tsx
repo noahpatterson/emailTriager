@@ -27,6 +27,7 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
       startedAt: syncRun.startedAt,
       finishedAt: syncRun.finishedAt,
       errorSummary: syncRun.errorSummary,
+      nextPageToken: syncRun.nextPageToken,
     }).from(syncRun).where(eq(syncRun.ownerAuthUserId, ownerId)).orderBy(desc(syncRun.startedAt)).limit(8),
   ]);
   return {

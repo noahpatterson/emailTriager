@@ -121,8 +121,6 @@ export const messageProcessing = pgTable(
     gmailThreadId: text("gmail_thread_id"),
     internalDate: timestamp("internal_date", { withTimezone: true }),
     senderAddress: text("sender_address"),
-    subject: text("subject"),
-    labelIds: jsonb("label_ids"),
     outcome: text("outcome"),
     outcomeReason: text("outcome_reason"),
     errorCode: text("error_code"),
@@ -134,6 +132,33 @@ export const messageProcessing = pgTable(
       "message_processing_outcome_check",
       sql`${table.outcome} IN ('priority','review','new_contest','unmatched','protected','failed','blocked')`,
     ),
+  ],
+);
+
+export const gmailMessageState = pgTable(
+  "gmail_message_state",
+  {
+    googleSubject: text("google_subject").notNull(),
+    gmailMessageId: text("gmail_message_id").notNull(),
+    latestRunId: uuid("latest_run_id")
+      .notNull()
+      .references(() => syncRun.id, { onDelete: "cascade" }),
+    outcome: text("outcome").notNull(),
+    processingStatus: text("processing_status").notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.googleSubject, table.gmailMessageId] }),
+    check(
+      "gmail_message_state_outcome_check",
+      sql`${table.outcome} IN ('priority','review','new_contest','unmatched','protected','failed','blocked')`,
+    ),
+    check(
+      "gmail_message_state_processing_status_check",
+      sql`${table.processingStatus} IN ('pending','processed','failed')`,
+    ),
+    index("gmail_message_state_updated_idx").on(table.updatedAt),
   ],
 );
 

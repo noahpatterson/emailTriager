@@ -9,5 +9,9 @@ Before rollout, back up the database and verify the prior release reads the curr
 ## Incident and retention readiness
 Revoke the Google grant, clear local token ciphertext, rotate the versioned encryption key through a controlled re-encryption procedure, and retain only sanitized identifiers/status/error codes. Never log tokens, raw provider responses, MIME, bodies, attachments, or configured term corpus. Define and automate retention periods before production enablement.
 
+Run `bun run retention:run` on a daily scheduler. It removes expired OAuth
+state immediately and finished run/message state older than `RETENTION_DAYS`
+(default 30). Run observations cascade with their expired runs.
+
 ## Optional validation
 `TEST_DATABASE_URL` enables isolated database checks. `LIVE_GMAIL_TEST=1` plus dedicated credentials enables live checks only after account, unique-label, and run-marker preflight; otherwise suites must report a named skip.

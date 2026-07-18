@@ -116,4 +116,24 @@ describe("safe label reconciliation", () => {
     await reconcileLabelMovement(fake, message(["source"]), "priority", labels);
     expect(fake.mutations[1]).toEqual({ messageId: "m1", addLabelIds: [], removeLabelIds: ["source"] });
   });
+
+  test("checks the current mutation fence immediately before every Gmail write", async () => {
+    const fake = new ReconciliationFake({
+      id: "m1", threadId: "t1", internalDate: "0", labelIds: ["source"],
+      payload: { headers: [{ name: "From", value: "sender@example.com" }] },
+    }, 1);
+    let checks = 0;
+    await expect(reconcileLabelMovement(
+      fake,
+      message(["source"]),
+      "priority",
+      labels,
+      async () => {
+        checks += 1;
+        if (checks === 2) throw new Error("Synchronization lease lost");
+      },
+    )).rejects.toThrow("lease lost");
+    expect(checks).toBe(2);
+    expect(fake.mutations).toHaveLength(1);
+  });
 });

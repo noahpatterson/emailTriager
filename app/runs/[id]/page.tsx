@@ -87,8 +87,8 @@ export default async function RunDetailPage({
       <p className="run-detail-summary">{detail.errorSummary ?? runMessage(detail.status, detail.trial)}</p>
       <p className="field-help">
         {detail.trial
-          ? "Subjects and senders only — no message bodies. Labels shown are proposals."
-          : "Subjects and senders only — no message bodies. Labels shown are destinations for classified messages."}
+          ? "Message links and normalized senders only — subjects and bodies are not retained. Labels shown are proposals."
+          : "Message links and normalized senders only — subjects and bodies are not retained. Labels shown are destinations for classified messages."}
       </p>
       <div className="run-detail-actions">
         <DeleteRunButton runId={detail.id} trial={detail.trial} />

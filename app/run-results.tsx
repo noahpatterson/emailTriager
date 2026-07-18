@@ -48,7 +48,7 @@ export function RunResultsList({
   return (
     <div className="trial-list">
       {results.map((row) => {
-        const title = row.subject?.trim() || "(No subject)";
+        const title = row.subject?.trim() || "Open Gmail message";
         const href = gmailMessageUrl(row);
         const reason = row.reason?.trim();
         return (

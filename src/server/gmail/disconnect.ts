@@ -1,6 +1,6 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
-import { gmailConnection } from "@/db/schema";
+import { gmailConnection, syncLease } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { database, type Database } from "@/src/server/db";
 import { decryptSecret } from "@/src/server/security/crypto";
@@ -14,6 +14,8 @@ export class DisconnectService {
   ) {}
 
   async disconnect(ownerId: string): Promise<void> {
+    // Fence first: workers must fail their immediate pre-mutation lease check.
+    await this.db.delete(syncLease).where(eq(syncLease.ownerAuthUserId, ownerId));
     const [row] = await this.db
       .update(gmailConnection)
       .set({

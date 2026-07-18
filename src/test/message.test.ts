@@ -35,4 +35,34 @@ describe("Gmail MIME parsing", () => {
   test("rejects invalid base64url", () => {
     expect(() => parseGmailMessage({ id: "m", threadId: "t", payload: { mimeType: "text/plain", body: { data: "***" } } })).toThrow("encoding");
   });
+
+  test("honors declared charsets and decodes RFC 2047 headers", () => {
+    const latin1 = Buffer.from([0x63, 0x61, 0x66, 0xe9]).toString("base64url");
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain; charset=iso-8859-1",
+        headers: [
+          { name: "From", value: "=?ISO-8859-1?Q?Andr=E9?= <andre@example.com>" },
+          { name: "Subject", value: "=?ISO-8859-1?Q?Caf=E9?=\r\n promotion" },
+        ],
+        body: { data: latin1 },
+      },
+    });
+    expect(parsed.from).toBe("André <andre@example.com>");
+    expect(parsed.subject).toBe("Café promotion");
+    expect(parsed.bodyText).toBe("café");
+  });
+
+  test("fails closed on invalid bytes for the declared charset", () => {
+    expect(() => parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain; charset=utf-8",
+        body: { data: Buffer.from([0xc3, 0x28]).toString("base64url") },
+      },
+    })).toThrow("charset");
+  });
 });

@@ -10,8 +10,7 @@ export class GoogleGmailProvider implements GmailProvider {
       headers: { authorization: `Bearer ${this.accessToken}`, "content-type": "application/json", ...init?.headers },
     });
     if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(`Gmail request failed (${response.status}): ${detail.slice(0, 500)}`);
+      throw new Error(`Gmail request failed (${response.status})`);
     }
     return response;
   }

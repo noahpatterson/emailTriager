@@ -18,6 +18,7 @@ export type DashboardRun = Readonly<{
   startedAt: string;
   finishedAt: string | null;
   errorSummary: string | null;
+  nextPageToken: string | null;
 }>;
 export type DashboardState = Readonly<{
   connected: boolean;
@@ -127,6 +128,7 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
           startedAt: now,
           finishedAt: now,
           errorSummary: null,
+          nextPageToken: result.nextPageToken,
         }, ...current.runs],
       }));
       if (result.trial) {
@@ -168,6 +170,8 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
 
   const busy = action !== "idle";
   const canTrialMore = trialMode && Boolean(trialNextPageToken) && !trialExhausted;
+  const liveNextPageToken =
+    state.runs.find((run) => !run.trial)?.nextPageToken ?? null;
 
   return <main className="shell" aria-busy={busy}>
     <header className="hero">
@@ -268,9 +272,14 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
                   className="button"
                   type="button"
                   disabled={busy || !state.connected || !state.configured}
-                  onClick={() => void runSync({ trial: false })}
+                  onClick={() => void runSync({
+                    trial: false,
+                    pageToken: liveNextPageToken,
+                  })}
                 >
-                  {action === "syncing" ? <><span className="spinner" aria-hidden="true" />Syncing safely…</> : "Run sync"}
+                  {action === "syncing"
+                    ? <><span className="spinner" aria-hidden="true" />Syncing safely…</>
+                    : liveNextPageToken ? "Continue sync" : "Run sync"}
                 </button>
               )}
             </div>
@@ -302,7 +311,7 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
           <p className="step">RECENT ACTIVITY</p>
           <h2>Sync runs</h2>
         </div>
-        <p>Open a run to review subjects, senders, and outcomes. Message bodies are never shown.</p>
+        <p>Open a run to review message links, normalized senders, and outcomes. Message subjects and bodies are not retained.</p>
       </div>
       {state.runs.length === 0 ? (
         <div className="empty">

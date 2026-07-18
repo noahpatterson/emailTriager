@@ -42,7 +42,10 @@ function termMatches(corpus: string, term: string): boolean {
 
 export function parseMailboxAddress(header: string): string | null {
   const value = header.trim();
-  const angleMatch = value.match(/<([^<>]+)>/u);
+  if (!value || /[:,;]/u.test(value)) return null;
+  const angleMatches = [...value.matchAll(/<([^<>]+)>/gu)];
+  if (angleMatches.length > 1) return null;
+  const angleMatch = angleMatches[0];
   const candidate = (angleMatch?.[1] ?? value).trim().normalize("NFKC").toLocaleLowerCase("und");
   if ((value.includes("<") || value.includes(">")) && !angleMatch) return null;
   return MAILBOX_PATTERN.test(candidate) ? candidate : null;

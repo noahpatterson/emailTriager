@@ -19,6 +19,7 @@ type ServerConfig = Readonly<{
   googleClientSecret: string;
   googleRedirectUri: string;
   tokenEncryptionKeyV1: string;
+  retentionDays: number;
 }>;
 
 function required(name: string): string {
@@ -37,6 +38,16 @@ function parseDatabaseDriver(): DatabaseDriver {
   if (!raw || raw === "neon-http") return "neon-http";
   if (raw === "pg") return "pg";
   throw new Error(`Invalid DATABASE_DRIVER: ${raw}. Expected neon-http or pg.`);
+}
+
+function retentionDays(): number {
+  const raw = optional("RETENTION_DAYS");
+  if (!raw) return 30;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > 3650) {
+    throw new Error("RETENTION_DAYS must be an integer from 1 to 3650");
+  }
+  return value;
 }
 
 export function getServerConfig(): ServerConfig {
@@ -63,5 +74,6 @@ export function getServerConfig(): ServerConfig {
     googleClientSecret: required("GOOGLE_CLIENT_SECRET"),
     googleRedirectUri,
     tokenEncryptionKeyV1: required("TOKEN_ENCRYPTION_KEY_V1"),
+    retentionDays: retentionDays(),
   };
 }

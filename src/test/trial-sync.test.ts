@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { runMessage } from "../../app/run-status";
 import type { ParsedMessage } from "../server/gmail/message";
 import { DeterministicGmailFake } from "../server/gmail/fake";
-import { destinationFor, listBounded, reconcileLabelMovement } from "../server/gmail/sync";
+import {
+  destinationFor,
+  listBounded,
+  reconcileLabelMovement,
+  syncStatusFor,
+} from "../server/gmail/sync";
 
 const TRIAL_BOUNDS = { maxPages: 1, maxMessagesPerPage: 10, maxTotalMessages: 10 } as const;
 
@@ -64,6 +69,13 @@ describe("trial sync bounds", () => {
       addLabelIds: ["priority"],
       removeLabelIds: ["source"],
     }]);
+  });
+
+  test("reports partial failure whenever any message fails", () => {
+    expect(syncStatusFor(true, 0)).toBe("completed");
+    expect(syncStatusFor(false, 0)).toBe("bounded_incomplete");
+    expect(syncStatusFor(true, 1)).toBe("partial_failure");
+    expect(syncStatusFor(false, 1)).toBe("partial_failure");
   });
 });
 

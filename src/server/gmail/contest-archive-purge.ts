@@ -1,5 +1,6 @@
 import "server-only";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { syncLease, triageConfig } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import type { GmailProvider } from "./contracts";
@@ -12,6 +13,7 @@ export { CONTEST_ARCHIVE_PURGE_CONFIRM } from "./contest-archive-purge-confirm";
 export { trashListedContestArchiveMessages } from "./contest-archive-trash-messages";
 
 const PURGE_BOUNDS: SyncBounds = { maxPages: 1, maxMessagesPerPage: 50, maxTotalMessages: 50 };
+const PURGE_LEASE_SECONDS = 300;
 
 export type ContestArchivePurgeResult = Readonly<{
   trashedCount: number;
@@ -35,44 +37,82 @@ export class ContestArchivePurgeService {
       throw new Error("Confirmation required");
     }
 
-    const [activeLease] = await this.db
-      .select({ leaseOwner: syncLease.leaseOwner })
-      .from(syncLease)
-      .where(and(eq(syncLease.ownerAuthUserId, ownerId), gt(syncLease.leaseExpiresAt, sql`now()`)))
-      .limit(1);
-    if (activeLease) throw new Error("Synchronization already running");
-
-    const [config] = await this.db
-      .select({
-        contestArchiveLabelId: triageConfig.contestArchiveLabelId,
+    const purgeId = randomUUID();
+    const [lease] = await this.db
+      .insert(syncLease)
+      .values({
+        ownerAuthUserId: ownerId,
+        leaseOwner: purgeId,
+        leaseExpiresAt: sql`now() + (${PURGE_LEASE_SECONDS} * interval '1 second')`,
       })
-      .from(triageConfig)
-      .where(eq(triageConfig.ownerAuthUserId, ownerId))
-      .orderBy(desc(triageConfig.version))
-      .limit(1);
-    if (!config?.contestArchiveLabelId) throw new Error("Contest archive label is not configured");
+      .onConflictDoUpdate({
+        target: syncLease.ownerAuthUserId,
+        set: {
+          leaseOwner: purgeId,
+          leaseExpiresAt: sql`now() + (${PURGE_LEASE_SECONDS} * interval '1 second')`,
+          fenceToken: sql`${syncLease.fenceToken} + 1`,
+        },
+        setWhere: sql`${syncLease.leaseExpiresAt} <= now()`,
+      })
+      .returning({ fenceToken: syncLease.fenceToken });
+    if (!lease) throw new Error("Synchronization already running");
 
-    const provider = await this.providerForOwner(ownerId);
-    const catalog = await provider.listLabels();
-    const archive = resolveLabelRef(config.contestArchiveLabelId, catalog);
-    const listed = await listBounded(
-      provider,
-      archive.id,
-      PURGE_BOUNDS,
-      options.pageToken ?? undefined,
-    );
+    try {
+      const [config] = await this.db
+        .select({
+          contestArchiveLabelId: triageConfig.contestArchiveLabelId,
+        })
+        .from(triageConfig)
+        .where(eq(triageConfig.ownerAuthUserId, ownerId))
+        .orderBy(desc(triageConfig.version))
+        .limit(1);
+      if (!config?.contestArchiveLabelId) throw new Error("Contest archive label is not configured");
 
-    const { trashedCount, skippedStarredCount } = await trashListedContestArchiveMessages(
-      provider,
-      listed.messageIds,
-    );
+      const provider = await this.providerForOwner(ownerId);
+      const catalog = await provider.listLabels();
+      const archive = resolveLabelRef(config.contestArchiveLabelId, catalog);
+      const listed = await listBounded(
+        provider,
+        archive.id,
+        PURGE_BOUNDS,
+        options.pageToken ?? undefined,
+      );
 
-    return {
-      trashedCount,
-      skippedStarredCount,
-      exhausted: listed.exhausted,
-      nextPageToken: listed.nextPageToken ?? null,
-      archiveLabelName: archive.name,
-    };
+      const { trashedCount, skippedStarredCount } = await trashListedContestArchiveMessages(
+        provider,
+        listed.messageIds,
+        archive.id,
+        async () => {
+          const [renewed] = await this.db
+            .update(syncLease)
+            .set({
+              leaseExpiresAt: sql`now() + (${PURGE_LEASE_SECONDS} * interval '1 second')`,
+            })
+            .where(and(
+              eq(syncLease.ownerAuthUserId, ownerId),
+              eq(syncLease.leaseOwner, purgeId),
+              eq(syncLease.fenceToken, lease.fenceToken),
+            ))
+            .returning({ fenceToken: syncLease.fenceToken });
+          if (!renewed) throw new Error("Purge lease lost");
+        },
+      );
+
+      return {
+        trashedCount,
+        skippedStarredCount,
+        exhausted: listed.exhausted,
+        nextPageToken: listed.nextPageToken ?? null,
+        archiveLabelName: archive.name,
+      };
+    } finally {
+      await this.db
+        .delete(syncLease)
+        .where(and(
+          eq(syncLease.ownerAuthUserId, ownerId),
+          eq(syncLease.leaseOwner, purgeId),
+          eq(syncLease.fenceToken, lease.fenceToken),
+        ));
+    }
   }
 }
