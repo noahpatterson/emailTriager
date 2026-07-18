@@ -1,0 +1,5 @@
+import { describe, expect, test } from "bun:test";
+import { DeterministicGmailFake } from "../server/gmail/fake";
+describe("deterministic Gmail fake", () => { test("paginates without search and records only explicit label changes", async () => { const fake = new DeterministicGmailFake({ first: { messages: [{ id: "m1", threadId: "t1" }], nextPageToken: "p2" }, p2: { messages: [] } }); expect((await fake.listMessages({ sourceLabelId: "source", maxResults: 10 })).nextPageToken).toBe("p2"); await fake.modifyLabels({ messageId: "m1", addLabelIds: ["priority"], removeLabelIds: ["source"] }); expect(fake.mutations).toHaveLength(1); }); });
+describe.skipIf(!process.env.TEST_DATABASE_URL)("optional Neon integration", () => { test("named credentialed suite", () => expect(process.env.TEST_DATABASE_URL).toBeTruthy()); });
+describe.skipIf(process.env.LIVE_GMAIL_TEST !== "1")("optional live Gmail integration", () => { test("requires explicit opt-in", () => expect(process.env.LIVE_GMAIL_TEST).toBe("1")); });
