@@ -69,3 +69,11 @@ export function displayLabelRefs(refs: LabelRefs, catalog: readonly GmailLabel[]
     contestArchiveLabelId: nameFor(refs.contestArchiveLabelId),
   };
 }
+
+export function displayLabelName(
+  labelId: string | null,
+  catalog: readonly GmailLabel[],
+): string | null {
+  if (!labelId) return null;
+  return catalog.find((label) => label.id === labelId)?.name ?? labelId;
+}

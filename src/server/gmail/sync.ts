@@ -16,7 +16,7 @@ import {
   type ClassificationOutcome,
   type ClassificationTerms,
 } from "./classify";
-import { resolveLabelRefs } from "./labels";
+import { displayLabelName, resolveLabelRefs } from "./labels";
 import { isGmailStarred, parseGmailMessage, type GmailMessage, type ParsedMessage } from "./message";
 
 export type SyncBounds = Readonly<{ maxPages: number; maxMessagesPerPage: number; maxTotalMessages: number }>;
@@ -397,9 +397,9 @@ export class MessageSyncService {
               senderAddress: parsed.from,
               outcome: classification.outcome,
               reason: classification.reason,
-              proposedLabelId: destinationFor(
-                classification.outcome,
-                recoveryLabels,
+              proposedLabelId: displayLabelName(
+                destinationFor(classification.outcome, recoveryLabels),
+                catalog,
               ),
             });
           } catch (error) {
@@ -499,7 +499,10 @@ export class MessageSyncService {
         try {
           parsed = parseGmailMessage(await provider.getMessage(messageId) as GmailMessage);
           const { outcome, reason } = classifyWithReason(parsed, terms, senderWhitelist, senderBlocklist);
-          const proposedLabelId = destinationFor(outcome, labels);
+          const proposedLabelId = displayLabelName(
+            destinationFor(outcome, labels),
+            catalog,
+          );
           // neon-http has no transaction support — keep this a single statement.
           await this.db
             .insert(messageProcessing)

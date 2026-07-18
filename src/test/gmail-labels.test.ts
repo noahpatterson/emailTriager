@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { displayLabelRefs, resolveLabelRef, resolveLabelRefs } from "../server/gmail/labels";
+import {
+  displayLabelName,
+  displayLabelRefs,
+  resolveLabelRef,
+  resolveLabelRefs,
+} from "../server/gmail/labels";
 
 const catalog = [
   { id: "Label_1", name: "Triage/Source" },
@@ -12,6 +17,11 @@ const catalog = [
 ] as const;
 
 describe("Gmail label name resolution", () => {
+  test("maps result label ids to user-facing names", () => {
+    expect(displayLabelName("Label_2", catalog)).toBe("Triage/Priority");
+    expect(displayLabelName(null, catalog)).toBeNull();
+  });
+
   test("resolves names case-insensitively and accepts ids", () => {
     expect(resolveLabelRef("triage/source", catalog).id).toBe("Label_1");
     expect(resolveLabelRef("Label_2", catalog).name).toBe("Triage/Priority");
