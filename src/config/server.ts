@@ -1,6 +1,7 @@
 import "server-only";
 import {
   assertInsecureLocalDevAllowed,
+  assertInsecureLocalDevConfiguredOrigin,
   isInsecureLocalDevRequested,
   LOCAL_DEV_OWNER_ID_DEFAULT,
 } from "@/src/server/auth/local-dev-flags";
@@ -42,6 +43,8 @@ export function getServerConfig(): ServerConfig {
   const insecureLocalDev = isInsecureLocalDevRequested();
   const databaseDriver = parseDatabaseDriver();
   assertInsecureLocalDevAllowed(databaseDriver);
+  const googleRedirectUri = required("GOOGLE_REDIRECT_URI");
+  if (insecureLocalDev) assertInsecureLocalDevConfiguredOrigin(googleRedirectUri);
 
   return {
     databaseUrl: required("DATABASE_URL"),
@@ -58,7 +61,7 @@ export function getServerConfig(): ServerConfig {
       : required("OWNER_NEON_AUTH_USER_ID"),
     googleClientId: required("GOOGLE_CLIENT_ID"),
     googleClientSecret: required("GOOGLE_CLIENT_SECRET"),
-    googleRedirectUri: required("GOOGLE_REDIRECT_URI"),
+    googleRedirectUri,
     tokenEncryptionKeyV1: required("TOKEN_ENCRYPTION_KEY_V1"),
   };
 }

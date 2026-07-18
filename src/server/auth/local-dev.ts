@@ -1,6 +1,9 @@
 import "server-only";
-import { cookies } from "next/headers";
-import { LOCAL_DEV_SESSION_COOKIE } from "@/src/server/auth/local-dev-flags";
+import { cookies, headers } from "next/headers";
+import {
+  assertInsecureLocalDevRequest,
+  LOCAL_DEV_SESSION_COOKIE,
+} from "@/src/server/auth/local-dev-flags";
 
 export {
   assertInsecureLocalDevAllowed,
@@ -20,7 +23,12 @@ export type AuthSession = {
   error?: unknown;
 };
 
+async function assertLoopbackRequest(): Promise<void> {
+  assertInsecureLocalDevRequest(await headers());
+}
+
 export async function getLocalDevSession(ownerId: string): Promise<AuthSession> {
+  await assertLoopbackRequest();
   const jar = await cookies();
   if (jar.get(LOCAL_DEV_SESSION_COOKIE)?.value !== "1") {
     return { data: null };
@@ -37,6 +45,7 @@ export async function getLocalDevSession(ownerId: string): Promise<AuthSession> 
 }
 
 export async function establishLocalDevSession(): Promise<void> {
+  await assertLoopbackRequest();
   const jar = await cookies();
   jar.set(LOCAL_DEV_SESSION_COOKIE, "1", {
     httpOnly: true,
@@ -47,6 +56,7 @@ export async function establishLocalDevSession(): Promise<void> {
 }
 
 export async function clearLocalDevSession(): Promise<void> {
+  await assertLoopbackRequest();
   const jar = await cookies();
   jar.delete(LOCAL_DEV_SESSION_COOKIE);
 }

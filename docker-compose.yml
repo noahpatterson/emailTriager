@@ -41,6 +41,7 @@ services:
       # Local Compose only. Production deploys must set NODE_ENV=production
       # and must NOT set INSECURE_LOCAL_DEV / ALLOW_INSECURE_LOCAL_DEV.
       NODE_ENV: development
+      APP_PROFILE: local-compose
       INSECURE_LOCAL_DEV: "true"
       ALLOW_INSECURE_LOCAL_DEV: I_UNDERSTAND
       DATABASE_DRIVER: pg

@@ -142,5 +142,7 @@ export const oauthState = pgTable("oauth_state", {
   ownerAuthUserId: text("owner_auth_user_id").notNull(),
   pkceVerifierCiphertext: text("pkce_verifier_ciphertext"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  processingToken: text("processing_token"),
+  processingExpiresAt: timestamp("processing_expires_at", { withTimezone: true }),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
 });

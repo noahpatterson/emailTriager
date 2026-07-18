@@ -202,7 +202,7 @@ The MVP is accepted only when all mandatory criteria pass. Credential-dependent 
 
 #### Non-production exception: insecure local Docker/dev
 
-AC-1’s Neon Auth requirement applies to production and credentialed validation. For local Docker/dev only, `INSECURE_LOCAL_DEV=true` may bypass Neon Auth when all of the following hold: `ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND`, `DATABASE_DRIVER=pg`, and `NODE_ENV` is not `production`. This mode is refused otherwise and must never ship as a production configuration.
+AC-1’s Neon Auth requirement applies to production and credentialed validation. For local Docker/dev only, `INSECURE_LOCAL_DEV=true` may bypass Neon Auth when all of the following hold: `ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND`, `APP_PROFILE=local-compose`, `DATABASE_DRIVER=pg`, and loopback Host/Origin/`GOOGLE_REDIRECT_URI`. This mode is refused otherwise and must never ship as a production configuration.
 
 ### AC-2: OAuth and secret safety
 

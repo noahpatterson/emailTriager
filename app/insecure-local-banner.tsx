@@ -15,7 +15,7 @@ export function InsecureLocalBanner() {
           connect a mailbox you cannot afford to mess up.
         </p>
         <p>
-          Requires <code>INSECURE_LOCAL_DEV=true</code> and{" "}
+          Requires <code>APP_PROFILE=local-compose</code>, <code>INSECURE_LOCAL_DEV=true</code>, and{" "}
           <code>ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND</code>. Never use this in a real
           deployment.
         </p>

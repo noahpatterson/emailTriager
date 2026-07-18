@@ -1,14 +1,27 @@
 import "server-only";
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { gmailConnection, oauthState, ownerBinding } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { database, type Database } from "@/src/server/db";
-import { encryptSecret, randomBase64Url, sha256Base64Url } from "@/src/server/security/crypto";
+import {
+  encryptSecret,
+  randomBase64Url,
+  sha256Base64Url,
+} from "@/src/server/security/crypto";
+import {
+  claimOAuthState,
+  consumeOAuthState,
+  releaseOAuthState,
+} from "@/src/server/oauth/state-lease";
 
 const SCOPE = "openid https://www.googleapis.com/auth/gmail.modify";
 const STATE_LIFETIME_MS = 10 * 60 * 1000;
 
-type GoogleTokens = { access_token?: string; refresh_token?: string; id_token?: string };
+type GoogleTokens = {
+  access_token?: string;
+  refresh_token?: string;
+  id_token?: string;
+};
 
 export class GoogleConnectionService {
   constructor(
@@ -39,7 +52,10 @@ export class GoogleConnectionService {
     await this.db.insert(oauthState).values({
       stateHash: sha256Base64Url(state),
       ownerAuthUserId: ownerId,
-      pkceVerifierCiphertext: encryptSecret(verifier, config.tokenEncryptionKeyV1),
+      pkceVerifierCiphertext: encryptSecret(
+        verifier,
+        config.tokenEncryptionKeyV1,
+      ),
       expiresAt: new Date(Date.now() + STATE_LIFETIME_MS),
     });
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -60,65 +76,90 @@ export class GoogleConnectionService {
   async complete(ownerId: string, code: string, state: string): Promise<void> {
     if (!code || !state) throw new Error("Missing callback parameters");
     const config = getServerConfig();
-    const rows = await this.db
-      .update(oauthState)
-      .set({ consumedAt: sql`now()` })
-      .where(
-        and(
-          eq(oauthState.stateHash, sha256Base64Url(state)),
-          eq(oauthState.ownerAuthUserId, ownerId),
-          isNull(oauthState.consumedAt),
-          gt(oauthState.expiresAt, sql`now()`),
-        ),
-      )
-      .returning({ pkceVerifierCiphertext: oauthState.pkceVerifierCiphertext });
-    if (rows.length !== 1 || !rows[0].pkceVerifierCiphertext) throw new Error("Invalid OAuth state");
-    const { decryptSecret } = await import("@/src/server/security/crypto");
-    const response = await this.fetcher("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: config.googleClientId,
-        client_secret: config.googleClientSecret,
-        redirect_uri: config.googleRedirectUri,
-        grant_type: "authorization_code",
-        code_verifier: decryptSecret(rows[0].pkceVerifierCiphertext, config.tokenEncryptionKeyV1),
-      }),
-    });
-    if (!response.ok) throw new Error("Token exchange failed");
-    const tokens = await response.json() as GoogleTokens;
-    if (!tokens.refresh_token || !tokens.access_token) throw new Error("Provider response incomplete");
-    const identityResponse = await this.fetcher("https://openidconnect.googleapis.com/v1/userinfo", {
-      headers: { authorization: `Bearer ${tokens.access_token}` },
-    });
-    if (!identityResponse.ok) throw new Error("Identity verification failed");
-    const identity = await identityResponse.json() as { sub?: unknown };
-    if (typeof identity.sub !== "string") throw new Error("Identity verification failed");
-    const subject = identity.sub;
-    const encrypted = encryptSecret(tokens.refresh_token, config.tokenEncryptionKeyV1);
-    await this.db
-      .insert(gmailConnection)
-      .values({
-        ownerAuthUserId: ownerId,
-        googleSubject: subject,
-        encryptedRefreshToken: encrypted,
-        keyVersion: 1,
-        disconnectedAt: null,
-      })
-      .onConflictDoUpdate({
-        target: gmailConnection.ownerAuthUserId,
-        set: {
-          encryptedRefreshToken: sql`CASE WHEN ${gmailConnection.googleSubject} = ${subject} THEN ${encrypted} ELSE ${gmailConnection.encryptedRefreshToken} END`,
-          disconnectedAt: sql`CASE WHEN ${gmailConnection.googleSubject} = ${subject} THEN NULL ELSE ${gmailConnection.disconnectedAt} END`,
-          updatedAt: sql`now()`,
+    const stateHash = sha256Base64Url(state);
+    const processingToken = randomBase64Url();
+    const pkceVerifierCiphertext = await claimOAuthState(
+      this.db,
+      ownerId,
+      stateHash,
+      processingToken,
+    );
+    if (!pkceVerifierCiphertext) throw new Error("Invalid OAuth state");
+    let connectionPersisted = false;
+    try {
+      const { decryptSecret } = await import("@/src/server/security/crypto");
+      const response = await this.fetcher(
+        "https://oauth2.googleapis.com/token",
+        {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: config.googleClientId,
+            client_secret: config.googleClientSecret,
+            redirect_uri: config.googleRedirectUri,
+            grant_type: "authorization_code",
+            code_verifier: decryptSecret(
+              pkceVerifierCiphertext,
+              config.tokenEncryptionKeyV1,
+            ),
+          }),
         },
-      });
-    const [connected] = await this.db
-      .select({ googleSubject: gmailConnection.googleSubject })
-      .from(gmailConnection)
-      .where(eq(gmailConnection.ownerAuthUserId, ownerId))
-      .limit(1);
-    if (connected?.googleSubject !== subject) throw new Error("Different Gmail account requires reset");
+      );
+      if (!response.ok) throw new Error("Token exchange failed");
+      const tokens = (await response.json()) as GoogleTokens;
+      if (!tokens.refresh_token || !tokens.access_token)
+        throw new Error("Provider response incomplete");
+      const identityResponse = await this.fetcher(
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        {
+          headers: { authorization: `Bearer ${tokens.access_token}` },
+        },
+      );
+      if (!identityResponse.ok) throw new Error("Identity verification failed");
+      const identity = (await identityResponse.json()) as { sub?: unknown };
+      if (typeof identity.sub !== "string")
+        throw new Error("Identity verification failed");
+      const subject = identity.sub;
+      const encrypted = encryptSecret(
+        tokens.refresh_token,
+        config.tokenEncryptionKeyV1,
+      );
+      await this.db
+        .insert(gmailConnection)
+        .values({
+          ownerAuthUserId: ownerId,
+          googleSubject: subject,
+          encryptedRefreshToken: encrypted,
+          keyVersion: 1,
+          disconnectedAt: null,
+        })
+        .onConflictDoUpdate({
+          target: gmailConnection.ownerAuthUserId,
+          set: {
+            encryptedRefreshToken: sql`CASE WHEN ${gmailConnection.googleSubject} = ${subject} THEN ${encrypted} ELSE ${gmailConnection.encryptedRefreshToken} END`,
+            disconnectedAt: sql`CASE WHEN ${gmailConnection.googleSubject} = ${subject} THEN NULL ELSE ${gmailConnection.disconnectedAt} END`,
+            updatedAt: sql`now()`,
+          },
+        });
+      const [connected] = await this.db
+        .select({ googleSubject: gmailConnection.googleSubject })
+        .from(gmailConnection)
+        .where(eq(gmailConnection.ownerAuthUserId, ownerId))
+        .limit(1);
+      if (connected?.googleSubject !== subject)
+        throw new Error("Different Gmail account requires reset");
+      connectionPersisted = true;
+      if (!(await consumeOAuthState(this.db, stateHash, processingToken))) {
+        throw new Error("OAuth state lease expired");
+      }
+    } catch (error) {
+      // After the connection row is written, keep the lease so another callback
+      // cannot reclaim unconsumed state. Transient pre-persist failures release.
+      if (!connectionPersisted) {
+        await releaseOAuthState(this.db, stateHash, processingToken);
+      }
+      throw error;
+    }
   }
 }
