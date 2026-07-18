@@ -12,9 +12,14 @@ export default function proxy(request: NextRequest) {
   if (pathname.startsWith("/api/") && !pathname.startsWith("/api/auth")) {
     return NextResponse.next();
   }
+  // Public brand assets must stay reachable; otherwise next/image fetches the
+  // login HTML and returns 400 ("isn't a valid image").
+  if (pathname.startsWith("/brand/") || /\.(?:png|jpe?g|gif|webp|svg|ico)$/i.test(pathname)) {
+    return NextResponse.next();
+  }
   return authMiddleware(request);
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|brand/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classifyMessage, normalizeTerms, parseMailboxAddress } from "../server/gmail/classify";
+import { classifyMessage, classifyWithReason, normalizeTerms, parseMailboxAddress } from "../server/gmail/classify";
 import type { ParsedMessage } from "../server/gmail/message";
 
 const message = (overrides: Partial<ParsedMessage> = {}): ParsedMessage => ({
@@ -57,6 +57,19 @@ describe("local deterministic classification", () => {
     expect(classifyMessage(message({ from: "Sender Name", subject: "urgent" }), terms, [])).toBe("protected");
   });
 
+  test("starred messages are protected and skip term/blocklist classification", () => {
+    expect(classifyMessage(message({
+      labelIds: ["source", "STARRED"],
+      subject: "urgent",
+      bodyText: "new contest review me",
+    }), terms, [], ["sender@example.com"])).toBe("protected");
+    expect(classifyMessage(message({
+      labelIds: ["STARRED"],
+      from: "Spam <spam@example.com>",
+      subject: "urgent",
+    }), terms, [], ["spam@example.com"])).toBe("protected");
+  });
+
   test("blocklists senders before term matching; whitelist wins on overlap", () => {
     expect(classifyMessage(message({ from: "Spam <spam@example.com>", subject: "urgent" }), terms, [], ["spam@example.com"])).toBe("blocked");
     expect(classifyMessage(
@@ -65,6 +78,37 @@ describe("local deterministic classification", () => {
       ["both@example.com"],
       ["both@example.com"],
     )).toBe("protected");
+  });
+
+  test("explains protected and processed outcomes with brief reasons", () => {
+    expect(classifyWithReason(message({ labelIds: ["STARRED"], subject: "urgent" }), terms, [])).toEqual({
+      outcome: "protected",
+      reason: "Starred in Gmail",
+    });
+    expect(classifyWithReason(message({ from: "Sender Name", subject: "urgent" }), terms, [])).toEqual({
+      outcome: "protected",
+      reason: "Sender could not be parsed",
+    });
+    expect(classifyWithReason(message({ subject: "urgent" }), terms, ["sender@example.com"])).toEqual({
+      outcome: "protected",
+      reason: "Sender is on the whitelist",
+    });
+    expect(classifyWithReason(message({ from: "Spam <spam@example.com>" }), terms, [], ["spam@example.com"])).toEqual({
+      outcome: "blocked",
+      reason: "Sender is on the blocklist",
+    });
+    expect(classifyWithReason(message({ bodyText: "This is URGENT!" }), terms, [])).toEqual({
+      outcome: "priority",
+      reason: "Matched priority term “urgent”",
+    });
+    expect(classifyWithReason(message({ subject: "review me please" }), terms, [])).toEqual({
+      outcome: "review",
+      reason: "Matched review term “review me”",
+    });
+    expect(classifyWithReason(message({ subject: "hello" }), terms, [])).toEqual({
+      outcome: "unmatched",
+      reason: "No classification terms matched",
+    });
   });
 
   test("rejects empty and oversized configuration", () => {

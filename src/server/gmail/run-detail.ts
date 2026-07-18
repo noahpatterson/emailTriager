@@ -66,6 +66,7 @@ export class RunDetailService {
         subject: messageProcessing.subject,
         senderAddress: messageProcessing.senderAddress,
         outcome: messageProcessing.outcome,
+        outcomeReason: messageProcessing.outcomeReason,
         processedAt: messageProcessing.processedAt,
       })
       .from(messageProcessing)

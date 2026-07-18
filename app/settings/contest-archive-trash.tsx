@@ -35,6 +35,7 @@ export function ContestArchiveTrashPanel({
       });
       const body = await response.json() as {
         trashedCount?: number;
+        skippedStarredCount?: number;
         exhausted?: boolean;
         nextPageToken?: string | null;
         archiveLabelName?: string;
@@ -42,11 +43,15 @@ export function ContestArchiveTrashPanel({
       };
       if (!response.ok) throw new Error(body.error || "Contest archive could not be moved to Trash.");
       const count = body.trashedCount ?? 0;
+      const skipped = body.skippedStarredCount ?? 0;
       const label = body.archiveLabelName ?? "contest-archive";
       setNextPageToken(body.exhausted ? null : (body.nextPageToken ?? null));
+      const skipNote = skipped > 0
+        ? ` Skipped ${skipped} starred message${skipped === 1 ? "" : "s"}.`
+        : "";
       setNotice(body.exhausted
-        ? `Moved ${count} message${count === 1 ? "" : "s"} labeled ${label} to Gmail Trash.`
-        : `Moved ${count} message${count === 1 ? "" : "s"} labeled ${label} to Gmail Trash. More remain — use Trash more.`);
+        ? `Moved ${count} message${count === 1 ? "" : "s"} labeled ${label} to Gmail Trash.${skipNote}`
+        : `Moved ${count} message${count === 1 ? "" : "s"} labeled ${label} to Gmail Trash.${skipNote} More remain — use Trash more.`);
       setStep(2);
       setUnderstood(false);
     } catch (caught) {
@@ -78,7 +83,7 @@ export function ContestArchiveTrashPanel({
           <p className="step">DANGER ZONE</p>
           <h2>Trash contest-archive</h2>
         </div>
-        <p>Moves messages with the contest-archive label into Gmail Trash (recoverable). Not permanent delete.</p>
+        <p>Moves messages with the contest-archive label into Gmail Trash (recoverable). Starred messages are skipped. Not permanent delete.</p>
       </div>
       {step === 0 && (
         <button
@@ -93,8 +98,8 @@ export function ContestArchiveTrashPanel({
       {step >= 1 && (
         <div className="danger-panel">
           <p className="field-help">
-            This moves every message currently labeled with your configured contest-archive destination to Gmail Trash.
-            You can recover them from Trash in Gmail. Sync must not be running.
+            This moves every message currently labeled with your configured contest-archive destination to Gmail Trash,
+            except starred messages, which are left in place. You can recover trashed messages from Trash in Gmail. Sync must not be running.
           </p>
           <label className="danger-confirm" htmlFor="purgeUnderstood">
             <input

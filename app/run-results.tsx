@@ -4,25 +4,26 @@ export type RunResultRow = Readonly<{
   subject: string | null;
   senderAddress: string | null;
   outcome: string;
+  reason: string | null;
   proposedLabelId: string | null;
 }>;
 
 const outcomeLabel: Record<string, string> = {
-  priority: 'Priority',
-  review: 'Review',
-  new_contest: 'New contest',
-  unmatched: 'Unmatched',
-  protected: 'Protected',
-  failed: 'Failed',
-  blocked: 'Blocked',
+  priority: "Priority",
+  review: "Review",
+  new_contest: "New contest",
+  unmatched: "Unmatched",
+  protected: "Protected",
+  failed: "Failed",
+  blocked: "Blocked",
 };
 
 /** Open the thread in Gmail web (All Mail). Uses thread id when available. */
 export function gmailMessageUrl(
-  row: Pick<RunResultRow, 'gmailMessageId' | 'gmailThreadId'>,
+  row: Pick<RunResultRow, "gmailMessageId" | "gmailThreadId">,
 ): string {
   const id = (row.gmailThreadId || row.gmailMessageId).trim();
-  return `https://mail.google.com/mail/u/2/#all/${encodeURIComponent(id)}`;
+  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(id)}`;
 }
 
 export function RunResultsList({
@@ -47,8 +48,9 @@ export function RunResultsList({
   return (
     <div className="trial-list">
       {results.map((row) => {
-        const title = row.subject?.trim() || '(No subject)';
+        const title = row.subject?.trim() || "(No subject)";
         const href = gmailMessageUrl(row);
+        const reason = row.reason?.trim();
         return (
           <article className="trial-row" key={row.gmailMessageId}>
             <div className="trial-row-copy">
@@ -63,13 +65,14 @@ export function RunResultsList({
                   {title}
                 </a>
               </strong>
-              <span>{row.senderAddress ?? 'Sender unavailable'}</span>
+              <span>{row.senderAddress ?? "Sender unavailable"}</span>
+              {reason ? <p className="trial-reason">{reason}</p> : null}
             </div>
             <div className="trial-row-meta">
               <span className={`trial-outcome ${row.outcome}`}>
                 {outcomeLabel[row.outcome] ?? row.outcome}
               </span>
-              <code>{row.proposedLabelId ?? '—'}</code>
+              <code>{row.proposedLabelId ?? "—"}</code>
             </div>
           </article>
         );

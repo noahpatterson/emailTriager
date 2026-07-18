@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { BrandLogo } from "@/app/brand-logo";
 import { DeleteRunButton } from "@/app/delete-run-button";
 import { RunResultsList } from "@/app/run-results";
 import { formatRunTime, runMessage, type RunStatus } from "@/app/run-status";
@@ -31,7 +32,7 @@ export default async function RunDetailPage({
   if (error || !userId) redirect("/auth/sign-in");
   if (userId !== config.ownerNeonAuthUserId) {
     return <main className="shell signed-out">
-      <div className="lock">✦</div>
+      <BrandLogo href={null} size="lg" />
       <p className="eyebrow">PRIVATE OWNER CONSOLE</p>
       <h1>Wrong account</h1>
       <p>Run details are only available to the configured owner.</p>
@@ -52,14 +53,17 @@ export default async function RunDetailPage({
 
   return <main className="shell">
     <header className="hero">
-      <div>
-        <p className="eyebrow">OWNER CONSOLE</p>
-        <h1>{detail.trial ? "Trial run" : "Sync run"}</h1>
-        <p className="lede">
-          {detail.trial
-            ? "Proposed label changes from this dry-run. Gmail was not mutated. Blocked and unmatched propose contest-archive."
-            : "Messages processed in this bounded sync. Classified destinations plus contest-archive for blocked and unmatched were applied."}
-        </p>
+      <div className="brand-heading">
+        <BrandLogo size="md" />
+        <div className="brand-heading-copy">
+          <p className="eyebrow">OWNER CONSOLE</p>
+          <h1>{detail.trial ? "Trial run" : "Sync run"}</h1>
+          <p className="lede">
+            {detail.trial
+              ? "Proposed label changes from this dry-run. Gmail was not mutated. Blocked and unmatched propose contest-archive."
+              : "Messages processed in this bounded sync. Classified destinations plus contest-archive for blocked and unmatched were applied."}
+          </p>
+        </div>
       </div>
       <Link className="back-link" href="/">← Back to Email Triage</Link>
     </header>

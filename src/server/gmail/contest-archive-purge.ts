@@ -4,15 +4,18 @@ import { syncLease, triageConfig } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import type { GmailProvider } from "./contracts";
 import { CONTEST_ARCHIVE_PURGE_CONFIRM } from "./contest-archive-purge-confirm";
+import { trashListedContestArchiveMessages } from "./contest-archive-trash-messages";
 import { resolveLabelRef } from "./labels";
 import { listBounded, type SyncBounds } from "./sync";
 
 export { CONTEST_ARCHIVE_PURGE_CONFIRM } from "./contest-archive-purge-confirm";
+export { trashListedContestArchiveMessages } from "./contest-archive-trash-messages";
 
 const PURGE_BOUNDS: SyncBounds = { maxPages: 1, maxMessagesPerPage: 50, maxTotalMessages: 50 };
 
 export type ContestArchivePurgeResult = Readonly<{
   trashedCount: number;
+  skippedStarredCount: number;
   exhausted: boolean;
   nextPageToken: string | null;
   archiveLabelName: string;
@@ -59,14 +62,14 @@ export class ContestArchivePurgeService {
       options.pageToken ?? undefined,
     );
 
-    let trashedCount = 0;
-    for (const messageId of listed.messageIds) {
-      await provider.trashMessage(messageId);
-      trashedCount += 1;
-    }
+    const { trashedCount, skippedStarredCount } = await trashListedContestArchiveMessages(
+      provider,
+      listed.messageIds,
+    );
 
     return {
       trashedCount,
+      skippedStarredCount,
       exhausted: listed.exhausted,
       nextPageToken: listed.nextPageToken ?? null,
       archiveLabelName: archive.name,

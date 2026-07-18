@@ -3,9 +3,9 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { messageProcessing, syncLease, syncRun, triageConfig } from "@/db/schema";
 import type { Database } from "@/src/server/db";
 import type { GmailProvider } from "./contracts";
-import { classifyMessage, type ClassificationOutcome, type ClassificationTerms } from "./classify";
+import { classifyWithReason, type ClassificationOutcome, type ClassificationTerms } from "./classify";
 import { resolveLabelRefs } from "./labels";
-import { parseGmailMessage, type GmailMessage, type ParsedMessage } from "./message";
+import { isGmailStarred, parseGmailMessage, type GmailMessage, type ParsedMessage } from "./message";
 
 export type SyncBounds = Readonly<{ maxPages: number; maxMessagesPerPage: number; maxTotalMessages: number }>;
 export type SyncResult = Readonly<{ exhausted: boolean; messageIds: readonly string[]; nextPageToken?: string }>;
@@ -17,6 +17,7 @@ export type TrialResultRow = Readonly<{
   subject: string | null;
   senderAddress: string | null;
   outcome: ClassificationOutcome | "failed";
+  reason: string | null;
   proposedLabelId: string | null;
 }>;
 
@@ -68,6 +69,8 @@ export async function reconcileLabelMovement(
   outcome: ClassificationOutcome,
   labels: LabelConfiguration,
 ): Promise<void> {
+  // Defense in depth: never mutate starred messages even if outcome were wrong.
+  if (isGmailStarred(message.labelIds)) return;
   const destination = destinationFor(outcome, labels);
   if (!destination) return;
   let current = message;
@@ -200,7 +203,7 @@ export class MessageSyncService {
         let parsed: ParsedMessage | null = null;
         try {
           parsed = parseGmailMessage(await provider.getMessage(messageId) as GmailMessage);
-          const outcome = classifyMessage(parsed, terms, senderWhitelist, senderBlocklist);
+          const { outcome, reason } = classifyWithReason(parsed, terms, senderWhitelist, senderBlocklist);
           const proposedLabelId = destinationFor(outcome, labels);
           // neon-http has no transaction support — keep this a single statement.
           await this.db
@@ -214,6 +217,7 @@ export class MessageSyncService {
               subject: parsed.subject,
               labelIds: parsed.labelIds,
               outcome,
+              outcomeReason: reason,
             })
             .onConflictDoNothing();
           if (!trial) {
@@ -229,10 +233,12 @@ export class MessageSyncService {
             subject: parsed.subject,
             senderAddress: parsed.from,
             outcome,
+            reason,
             proposedLabelId,
           });
         } catch (error) {
           console.error("Message processing failed", messageId, error instanceof Error ? error.message : error);
+          const failReason = parsed ? "Message processing failed" : "Message could not be parsed";
           await this.db
             .insert(messageProcessing)
             .values({
@@ -244,6 +250,7 @@ export class MessageSyncService {
               subject: parsed?.subject,
               labelIds: parsed?.labelIds,
               outcome: "failed",
+              outcomeReason: failReason,
               errorCode: parsed ? "MESSAGE_PROCESSING_FAILED" : "MESSAGE_PARSE_FAILED",
               processedAt: sql`now()`,
             })
@@ -254,6 +261,7 @@ export class MessageSyncService {
             subject: parsed?.subject ?? null,
             senderAddress: parsed?.from ?? null,
             outcome: "failed",
+            reason: failReason,
             proposedLabelId: null,
           });
         }

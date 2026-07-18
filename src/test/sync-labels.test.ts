@@ -70,6 +70,13 @@ describe("safe label reconciliation", () => {
     ]);
   });
 
+  test("starred messages never call modifyLabels even for movable outcomes", async () => {
+    const fake = new ReconciliationFake({});
+    await reconcileLabelMovement(fake, message(["source", "STARRED"]), "priority", labels);
+    await reconcileLabelMovement(fake, message(["source", "STARRED"]), "blocked", labels);
+    expect(fake.mutations).toEqual([]);
+  });
+
   test("an ambiguous result is fetched and accepted when already converged", async () => {
     const fake = new ReconciliationFake({
       id: "m1", threadId: "t1", internalDate: "0", labelIds: ["priority"],

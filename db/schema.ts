@@ -124,6 +124,7 @@ export const messageProcessing = pgTable(
     subject: text("subject"),
     labelIds: jsonb("label_ids"),
     outcome: text("outcome"),
+    outcomeReason: text("outcome_reason"),
     errorCode: text("error_code"),
     processedAt: timestamp("processed_at", { withTimezone: true }),
   },

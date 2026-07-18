@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { BrandLogo } from "@/app/brand-logo";
 import { ConfigurationForm } from "@/app/configuration/configuration-form";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
@@ -16,7 +17,7 @@ export default async function ConfigurationPage() {
   if (error || !userId) redirect("/auth/sign-in");
   if (userId !== config.ownerNeonAuthUserId) {
     return <main className="shell signed-out">
-      <div className="lock">✦</div>
+      <BrandLogo href={null} size="lg" />
       <p className="eyebrow">PRIVATE OWNER CONSOLE</p>
       <h1>Wrong account</h1>
       <p>Configuration is only available to the configured owner.</p>
@@ -35,10 +36,13 @@ export default async function ConfigurationPage() {
 
   return <main className="shell">
     <header className="hero">
-      <div>
-        <p className="eyebrow">OWNER CONSOLE</p>
-        <h1>Configuration</h1>
-        <p className="lede">Set Gmail labels by name, classification terms, sender protection, and sync bounds.</p>
+      <div className="brand-heading">
+        <BrandLogo size="md" />
+        <div className="brand-heading-copy">
+          <p className="eyebrow">OWNER CONSOLE</p>
+          <h1>Configuration</h1>
+          <p className="lede">Set Gmail labels by name, classification terms, sender protection, and sync bounds.</p>
+        </div>
       </div>
       <Link className="back-link" href="/">← Back to Email Triage</Link>
     </header>

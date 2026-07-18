@@ -1,8 +1,20 @@
 import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata = { title: "Email Triage", description: "Private deterministic Gmail triage console" };
+export const metadata: Metadata = {
+  title: "Email Triage",
+  description: "Private deterministic Gmail triage console",
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png", sizes: "192x192" }],
+    apple: [{ url: "/apple-icon.png", type: "image/png", sizes: "180x180" }],
+  },
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="en"><body>{children}</body></html>;
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
 }

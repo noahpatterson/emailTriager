@@ -17,6 +17,7 @@ type ProcessingRow = Readonly<{
   subject: string | null;
   senderAddress: string | null;
   outcome: string | null;
+  outcomeReason?: string | null;
 }>;
 
 const OUTCOMES = new Set<string>(["priority", "review", "new_contest", "unmatched", "protected", "failed", "blocked"]);
@@ -52,6 +53,7 @@ export function buildRunResultRows(
       subject: row.subject,
       senderAddress: row.senderAddress,
       outcome,
+      reason: row.outcomeReason?.trim() || null,
       proposedLabelId: nameFor(destination),
     };
   });

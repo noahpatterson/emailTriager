@@ -133,7 +133,10 @@ export function ConfigurationForm({
       <form className="config-form" onSubmit={(event) => { event.preventDefault(); void saveConfig(); }}>
         <fieldset>
           <legend>Gmail labels</legend>
-          <p className="field-help">Enter the label names exactly as they appear in Gmail (for example <code>Triage/Inbox</code>). Nested labels use a slash. Names are resolved to IDs when you save.</p>
+          <p className="field-help">
+            Create these labels in your Gmail account first, then enter the names here exactly as they appear (for example <code>Triage/Inbox</code>). Nested labels use a slash. Names are resolved to IDs when you save.{" "}
+            <a href="https://support.google.com/mail/answer/118708" target="_blank" rel="noopener noreferrer">How to create labels in Gmail</a>
+          </p>
           <div className="config-grid">
             <label htmlFor="sourceLabelId">Source label
               <input id="sourceLabelId" name="sourceLabelId" value={form.sourceLabelId} onChange={(e) => updateForm("sourceLabelId", e.target.value)} autoComplete="off" required disabled={pending} placeholder="Triage/Source" />

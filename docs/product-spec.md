@@ -2,7 +2,7 @@
 
 **Status:** Approved implementation baseline  
 **Scope:** MVP only  
-**Last updated:** 2026-07-18
+**Last updated:** 2026-07-18 (starred protection; Settings nav + Gmail how-it-works)
 
 ## 1. Purpose
 
@@ -19,6 +19,7 @@ This document is the stable product and verification contract. Behavior not stat
 - Bounded, paginated synchronization from one configured Gmail source label.
 - Local MIME parsing, normalization, matching, classification, and precedence resolution.
 - Outcomes: **priority**, **review**, **new contest**, **blocked** (sender blocklist), **unmatched**, and **protected**.
+- Each processed message stores a brief **outcome reason** (e.g. matched term, starred, whitelist, blocklist, unparseable sender) shown in run/trial review.
 - Configurable terms, sender whitelist, sender blocklist, source label, destination labels (including contest-archive), and sync bounds.
 - Owner-only, double-confirmed move of contest-archive messages to Gmail Trash (recoverable; not permanent delete).
 - Resumable, idempotent sync runs with visible run status and failure summaries.
@@ -98,13 +99,15 @@ The configurable whitelist and blocklist contain normalized exact mailbox addres
 
 A whitelisted sender is protected from automated movement. Classification may be computed for diagnostic counters, but the final action is `protected`, no destination label is added, and the source label is not removed. An unparseable/ambiguous sender fails conservatively with no movement rather than bypassing protection.
 
+A message whose Gmail `labelIds` include the system label `STARRED` is likewise **protected**: sync must not call `modifyLabels`, and contest-archive trash-all must not trash it. Prefer reusing the existing `protected` outcome (no distinct `starred` outcome).
+
 A blocklisted sender (not also whitelisted) yields outcome `blocked` without term matching and is moved to the contest-archive destination. **Whitelist wins over blocklist** when the same address appears in both.
 
 ## 9. Deterministic classification
 
 For each parseable message, choose exactly one result using this precedence:
 
-1. **protected** — unparseable/ambiguous From, or exact whitelist match;
+1. **protected** — Gmail `STARRED`, unparseable/ambiguous From, or exact whitelist match;
 2. **blocked** — otherwise, exact blocklist match (skip term matching);
 3. **priority** — otherwise, one or more priority terms match;
 4. **review** — otherwise, one or more review terms match;
@@ -115,7 +118,7 @@ The result depends only on the versioned configuration snapshot and parsed messa
 
 ## 10. Conservative label movement
 
-Movement is permitted only after parsing and classification complete successfully, the sender is not protected, and a destination is selected.
+Movement is permitted only after parsing and classification complete successfully, the sender is not protected, the message is not Gmail-starred, and a destination is selected.
 
 Destination mapping:
 
@@ -136,6 +139,7 @@ An explicit owner-only control may move messages that currently carry the config
 - List only by the contest-archive label ID (no Gmail `q`);
 - Bounded batches with a resume token when incomplete;
 - Refuse while a sync lease is held;
+- Skip messages that carry Gmail `STARRED` (do not trash them); report skipped starred counts when returning purge results;
 - Never permanently delete, never trash other labels, never mark read/unread.
 
 ## 11. Resumability, idempotency, and concurrency
@@ -174,6 +178,8 @@ Define and enforce retention jobs: transient OAuth state expires within 10 minut
 ## 14. Minimal UI and routes
 
 Owner-only UI provides connection state, configuration editing, a sync trigger, current/recent run status, counts by outcome, sanitized failures, disconnect, and reconnect. It must clearly state that bounded runs may be incomplete. Non-owner and signed-out users see no owner, Gmail, configuration, or run data.
+
+**Navigation:** the account menu links to Settings (not Configuration). Settings hosts product guidance on how triage interacts with Gmail, a link into the Configuration page, and the contest-archive trash danger zone. Configuration remains a dedicated route for labels, terms, sender lists, and bounds; label fields instruct the owner to create labels in Gmail first (with a link to Google’s create-labels help).
 
 Routes use explicit schemas and appropriate status codes. Sync trigger is idempotent against retries. OAuth callback redirects without secrets. UI renders no email body content for this MVP.
 
@@ -217,7 +223,7 @@ The MVP is accepted only when all mandatory criteria pass. Credential-dependent 
 ### AC-5: Precedence, whitelist, and blocklist
 
 - [ ] Table-driven tests exercise every combination of priority/review/new-contest matches and prove `priority > review > new contest > unmatched` with exactly one result among term outcomes.
-- [ ] Precedence tests prove invalid From / whitelist → `protected`; blocklist (after whitelist) → `blocked` skipping terms; whitelist wins when both lists contain the address.
+- [ ] Precedence tests prove `STARRED` / invalid From / whitelist → `protected`; blocklist (after whitelist) → `blocked` skipping terms; whitelist wins when both lists contain the address; starred messages issue zero label mutations and are skipped by contest-archive trash.
 - [ ] Sender fixtures cover display names, mixed casing, multiple/ambiguous addresses, malformed headers, and spoof-like display-name text.
 - [ ] Exact whitelisted mailbox matches always yield protected/no movement even when every category matches; ambiguous/unparseable sender yields no movement.
 
@@ -226,7 +232,7 @@ The MVP is accepted only when all mandatory criteria pass. Credential-dependent 
 - [ ] Service contract tests prove modification occurs only after successful parsing/classification and consists of destination-label add plus configured source-label removal in the same modify request.
 - [ ] Tests prove `blocked` and `unmatched` mutate to contest-archive; `protected` and `failed` issue zero mutations; stale-lease, disconnected, and invalid-label cases issue zero mutations.
 - [ ] Sync-path adapter tests fail if production sync code invokes permanent delete, batch-delete, spam, archive, or read/unread mutation; fixtures assert sync never changes `TRASH`, `SPAM`, or `UNREAD`.
-- [ ] Owner trash-all tests prove only `users.messages.trash` against contest-archive-listed messages, require confirm token and lease absence, and never permanent-delete.
+- [ ] Owner trash-all tests prove only `users.messages.trash` against contest-archive-listed messages (skipping `STARRED`), require confirm token and lease absence, and never permanent-delete.
 - [ ] Reconciliation tests cover timeout-before-result, already-converged labels, destination-present/source-present, and retry exhaustion without removing a pre-existing destination.
 
 ### AC-7: Idempotency, concurrency, partial failure, and recovery

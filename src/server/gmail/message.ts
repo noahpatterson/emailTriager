@@ -25,6 +25,21 @@ export type ParsedMessage = Readonly<{
   bodyText: string;
 }>;
 
+/** Gmail system label applied when the owner stars a message. */
+export const GMAIL_STARRED_LABEL = "STARRED";
+
+export function isGmailStarred(labelIds: readonly string[]): boolean {
+  return labelIds.includes(GMAIL_STARRED_LABEL);
+}
+
+/** Read labelIds from a raw Gmail message payload without requiring a full MIME parse. */
+export function labelIdsFromGmailMessage(raw: unknown): readonly string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const labelIds = (raw as { labelIds?: unknown }).labelIds;
+  if (!Array.isArray(labelIds)) return [];
+  return labelIds.filter((id): id is string => typeof id === "string");
+}
+
 const MAX_PARTS = 100;
 const MAX_DEPTH = 12;
 const MAX_PART_BYTES = 256_000;

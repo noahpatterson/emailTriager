@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { BrandLogo } from "@/app/brand-logo";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { DeleteRunButton } from "@/app/delete-run-button";
 import { RunResultsList, type RunResultRow } from "@/app/run-results";
@@ -65,7 +66,6 @@ function UserMenu({ user }: { user: DashboardUser }) {
           <strong>{name || "Owner"}</strong>
           <span>{user.email}</span>
         </div>
-        <Link className="user-menu-link" href="/configuration" role="menuitem">Configuration</Link>
         <Link className="user-menu-link" href="/settings" role="menuitem">Settings</Link>
         <SignOutButton className="user-menu-sign-out" />
       </div>
@@ -171,7 +171,14 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
 
   return <main className="shell" aria-busy={busy}>
     <header className="hero">
-      <div><p className="eyebrow">OWNER CONSOLE</p><h1>Email Triage</h1><p className="lede">Sort a bounded set of Gmail messages with deterministic, local rules.</p></div>
+      <div className="brand-heading">
+        <BrandLogo size="lg" />
+        <div className="brand-heading-copy">
+          <p className="eyebrow">OWNER CONSOLE</p>
+          <h1>Email Triage</h1>
+          <p className="lede">Sort a bounded set of Gmail messages with deterministic, local rules.</p>
+        </div>
+      </div>
       <div className="hero-aside">
         <span className={`connection ${state.connected ? "online" : "offline"}`}><i />{state.connected ? "Gmail connected" : "Gmail disconnected"}</span>
         <UserMenu user={user} />
@@ -191,75 +198,84 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
         {state.connected ? <button className="button secondary" type="button" disabled={busy} onClick={disconnect}>{action === "disconnecting" ? "Disconnecting…" : "Disconnect Gmail"}</button> : <button className="button" type="button" disabled={busy} onClick={connect}>{action === "connecting" ? "Opening Google…" : "Connect Gmail"}</button>}
       </article>
 
-      <article className={`card ${trialMode ? "trial-card" : ""}`}>
-        <p className="step">02 · BOUNDED SYNC</p>
-        <h2>{trialMode ? "Trial classification" : "Classify the next batch"}</h2>
-        <p>{trialMode
-          ? "Trial mode classifies up to 10 messages and shows the labels that would be applied. Gmail is never mutated."
-          : "Priority, review, and new-contest terms are matched locally. A bounded run can stop before the source label is exhausted."}</p>
-
+      <article className={`card ${!state.configured ? "" : trialMode ? "trial-card" : ""}`}>
         {!state.configured ? (
-          <p className="inline-warning">
-            Configuration is not ready.{" "}
-            <Link href="/configuration">Set up configuration</Link>
-            {" "}before syncing.
-          </p>
+          <>
+            <p className="step">02 · CONFIGURATION</p>
+            <h2>Set labels and classification rules</h2>
+            <p>
+              Create your Gmail labels, then configure source and destination labels, terms, whitelist, and bounds.
+              Open Settings for how triage behaves in Gmail.
+            </p>
+            <div className="sync-actions">
+              <Link className="button" href="/configuration">Open configuration</Link>
+              <Link className="button secondary-ink" href="/settings">How it works</Link>
+            </div>
+          </>
         ) : (
-          <label className="trial-toggle" htmlFor="trialMode">
-            <input
-              id="trialMode"
-              type="checkbox"
-              checked={trialMode}
-              disabled={busy || !state.connected}
-              onChange={(event) => {
-                setTrialMode(event.target.checked);
-                if (!event.target.checked) {
-                  setTrialResults([]);
-                  setTrialNextPageToken(null);
-                  setTrialExhausted(false);
-                }
-              }}
-            />
-            <span>
-              <strong>Trial mode</strong>
-              <small>Dry-run 10 messages at a time — no label changes</small>
-            </span>
-          </label>
-        )}
+          <>
+            <p className="step">02 · BOUNDED SYNC</p>
+            <h2>{trialMode ? "Trial classification" : "Classify the next batch"}</h2>
+            <p>{trialMode
+              ? "Trial mode classifies up to 10 messages and shows the labels that would be applied. Gmail is never mutated."
+              : "Priority, review, and new-contest terms are matched locally. A bounded run can stop before the source label is exhausted."}</p>
 
-        <div className="sync-actions">
-          {trialMode ? (
-            <>
-              <button
-                className="button"
-                type="button"
-                disabled={busy || !state.connected || !state.configured}
-                onClick={() => void runSync({ trial: true })}
-              >
-                {action === "syncing" ? <><span className="spinner" aria-hidden="true" />Trial running…</> : "Run trial"}
-              </button>
-              {canTrialMore && (
+            <label className="trial-toggle" htmlFor="trialMode">
+              <input
+                id="trialMode"
+                type="checkbox"
+                checked={trialMode}
+                disabled={busy || !state.connected}
+                onChange={(event) => {
+                  setTrialMode(event.target.checked);
+                  if (!event.target.checked) {
+                    setTrialResults([]);
+                    setTrialNextPageToken(null);
+                    setTrialExhausted(false);
+                  }
+                }}
+              />
+              <span>
+                <strong>Trial mode</strong>
+                <small>Dry-run 10 messages at a time — no label changes</small>
+              </span>
+            </label>
+
+            <div className="sync-actions">
+              {trialMode ? (
+                <>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={busy || !state.connected || !state.configured}
+                    onClick={() => void runSync({ trial: true })}
+                  >
+                    {action === "syncing" ? <><span className="spinner" aria-hidden="true" />Trial running…</> : "Run trial"}
+                  </button>
+                  {canTrialMore && (
+                    <button
+                      className="button secondary-ink"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runSync({ trial: true, pageToken: trialNextPageToken })}
+                    >
+                      Trial more
+                    </button>
+                  )}
+                </>
+              ) : (
                 <button
-                  className="button secondary-ink"
+                  className="button"
                   type="button"
-                  disabled={busy}
-                  onClick={() => void runSync({ trial: true, pageToken: trialNextPageToken })}
+                  disabled={busy || !state.connected || !state.configured}
+                  onClick={() => void runSync({ trial: false })}
                 >
-                  Trial more
+                  {action === "syncing" ? <><span className="spinner" aria-hidden="true" />Syncing safely…</> : "Run sync"}
                 </button>
               )}
-            </>
-          ) : (
-            <button
-              className="button"
-              type="button"
-              disabled={busy || !state.connected || !state.configured}
-              onClick={() => void runSync({ trial: false })}
-            >
-              {action === "syncing" ? <><span className="spinner" aria-hidden="true" />Syncing safely…</> : "Run sync"}
-            </button>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </article>
     </section>
 

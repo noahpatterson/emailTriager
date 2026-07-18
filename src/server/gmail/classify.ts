@@ -1,6 +1,10 @@
-import type { ParsedMessage } from "./message";
+import { isGmailStarred, type ParsedMessage } from "./message";
 
 export type ClassificationOutcome = "priority" | "review" | "new_contest" | "unmatched" | "protected" | "blocked";
+export type ClassificationResult = Readonly<{
+  outcome: ClassificationOutcome;
+  reason: string;
+}>;
 export type ClassificationTerms = Readonly<{
   priority: readonly string[];
   review: readonly string[];
@@ -50,21 +54,44 @@ export function classifyMessage(
   senderWhitelist: readonly string[],
   senderBlocklist: readonly string[] = [],
 ): ClassificationOutcome {
+  return classifyWithReason(message, terms, senderWhitelist, senderBlocklist).outcome;
+}
+
+export function classifyWithReason(
+  message: ParsedMessage,
+  terms: ClassificationTerms,
+  senderWhitelist: readonly string[],
+  senderBlocklist: readonly string[] = [],
+): ClassificationResult {
+  // Starred mail is owner-protected: never label-move, even if terms or blocklist would match.
+  if (isGmailStarred(message.labelIds)) {
+    return { outcome: "protected", reason: "Starred in Gmail" };
+  }
   const sender = parseMailboxAddress(message.from);
-  if (!sender) return "protected";
+  if (!sender) {
+    return { outcome: "protected", reason: "Sender could not be parsed" };
+  }
   const whitelist = new Set(senderWhitelist.map((address) => parseMailboxAddress(address)).filter((address): address is string => address !== null));
-  if (whitelist.has(sender)) return "protected";
+  if (whitelist.has(sender)) {
+    return { outcome: "protected", reason: "Sender is on the whitelist" };
+  }
   const blocklist = new Set(senderBlocklist.map((address) => parseMailboxAddress(address)).filter((address): address is string => address !== null));
-  if (blocklist.has(sender)) return "blocked";
+  if (blocklist.has(sender)) {
+    return { outcome: "blocked", reason: "Sender is on the blocklist" };
+  }
 
   const corpus = normalizeMatchText([message.from, message.replyTo, message.subject, message.bodyText].join("\n"));
   const categories = [
-    ["priority", terms.priority],
-    ["review", terms.review],
-    ["new_contest", terms.newContest],
+    ["priority", "priority", terms.priority],
+    ["review", "review", terms.review],
+    ["new_contest", "new contest", terms.newContest],
   ] as const;
-  for (const [outcome, configuredTerms] of categories) {
-    if (normalizeTerms(configuredTerms).some((term) => termMatches(corpus, term))) return outcome;
+  for (const [outcome, label, configuredTerms] of categories) {
+    for (const term of normalizeTerms(configuredTerms)) {
+      if (termMatches(corpus, term)) {
+        return { outcome, reason: `Matched ${label} term “${term}”` };
+      }
+    }
   }
-  return "unmatched";
+  return { outcome: "unmatched", reason: "No classification terms matched" };
 }

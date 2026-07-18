@@ -30,14 +30,28 @@ describe("run detail review mapping", () => {
     ], labels);
 
     expect(rows).toEqual([
-      { gmailMessageId: "m1", gmailThreadId: "t1", subject: "Winner!", senderAddress: "a@example.com", outcome: "priority", proposedLabelId: "Label_priority" },
-      { gmailMessageId: "m2", gmailThreadId: "t2", subject: "Please review", senderAddress: "b@example.com", outcome: "review", proposedLabelId: "Label_review" },
-      { gmailMessageId: "m3", gmailThreadId: "t3", subject: "Enter now", senderAddress: "c@example.com", outcome: "new_contest", proposedLabelId: "Label_contest" },
-      { gmailMessageId: "m4", gmailThreadId: "t4", subject: "Hello", senderAddress: "d@example.com", outcome: "unmatched", proposedLabelId: "Label_archive" },
-      { gmailMessageId: "m5", gmailThreadId: "t5", subject: "VIP", senderAddress: "e@example.com", outcome: "protected", proposedLabelId: null },
-      { gmailMessageId: "m6", gmailThreadId: "t6", subject: "Blocked", senderAddress: "f@example.com", outcome: "blocked", proposedLabelId: "Label_archive" },
-      { gmailMessageId: "m7", gmailThreadId: null, subject: null, senderAddress: null, outcome: "failed", proposedLabelId: null },
+      { gmailMessageId: "m1", gmailThreadId: "t1", subject: "Winner!", senderAddress: "a@example.com", outcome: "priority", reason: null, proposedLabelId: "Label_priority" },
+      { gmailMessageId: "m2", gmailThreadId: "t2", subject: "Please review", senderAddress: "b@example.com", outcome: "review", reason: null, proposedLabelId: "Label_review" },
+      { gmailMessageId: "m3", gmailThreadId: "t3", subject: "Enter now", senderAddress: "c@example.com", outcome: "new_contest", reason: null, proposedLabelId: "Label_contest" },
+      { gmailMessageId: "m4", gmailThreadId: "t4", subject: "Hello", senderAddress: "d@example.com", outcome: "unmatched", reason: null, proposedLabelId: "Label_archive" },
+      { gmailMessageId: "m5", gmailThreadId: "t5", subject: "VIP", senderAddress: "e@example.com", outcome: "protected", reason: null, proposedLabelId: null },
+      { gmailMessageId: "m6", gmailThreadId: "t6", subject: "Blocked", senderAddress: "f@example.com", outcome: "blocked", reason: null, proposedLabelId: "Label_archive" },
+      { gmailMessageId: "m7", gmailThreadId: null, subject: null, senderAddress: null, outcome: "failed", reason: null, proposedLabelId: null },
     ]);
+  });
+
+  test("passes through stored outcome reasons", () => {
+    const [row] = buildRunResultRows([
+      {
+        gmailMessageId: "m1",
+        gmailThreadId: "t1",
+        subject: "VIP",
+        senderAddress: "e@example.com",
+        outcome: "protected",
+        outcomeReason: "Starred in Gmail",
+      },
+    ], labels);
+    expect(row?.reason).toBe("Starred in Gmail");
   });
 
   test("prefers Gmail display names when a catalog is available", () => {

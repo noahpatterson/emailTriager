@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import Link from "next/link";
+import { BrandLogo } from "@/app/brand-logo";
 import { gmailConnection, syncRun, triageConfig } from "@/db/schema";
 import { Dashboard, type DashboardState } from "@/app/dashboard";
 import { SignOutButton } from "@/app/auth/sign-out-button";
@@ -63,7 +64,7 @@ export default async function Home() {
 
   if (view.kind === "wrong-owner") {
     return <main className="shell signed-out">
-      <div className="lock">✦</div>
+      <BrandLogo href={null} size="lg" />
       <p className="eyebrow">PRIVATE OWNER CONSOLE</p>
       <h1>Wrong account</h1>
       <p>You are signed in, but this workspace only accepts the configured owner. Signed-in user id:</p>
@@ -75,5 +76,12 @@ export default async function Home() {
     </main>;
   }
 
-  return <main className="shell signed-out"><div className="lock">✦</div><p className="eyebrow">PRIVATE OWNER CONSOLE</p><h1>Email Triage</h1><p>This workspace is available only to the configured owner. Sign in with the owner account to continue.</p><Link className="button" href="/auth/sign-in">Sign in</Link><small>No Gmail, configuration, or run information is visible while signed out.</small></main>;
+  return <main className="shell signed-out">
+    <BrandLogo href={null} size="lg" />
+    <p className="eyebrow">PRIVATE OWNER CONSOLE</p>
+    <h1>Email Triage</h1>
+    <p>This workspace is available only to the configured owner. Sign in with the owner account to continue.</p>
+    <Link className="button" href="/auth/sign-in">Sign in</Link>
+    <small>No Gmail, configuration, or run information is visible while signed out.</small>
+  </main>;
 }
