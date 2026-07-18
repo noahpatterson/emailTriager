@@ -1,11 +1,38 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { getServerConfig } from "@/src/config/server";
+import {
+  clearLocalDevSession,
+  establishLocalDevSession,
+} from "@/src/server/auth/local-dev";
 import { getNeonAuth } from "@/src/server/auth/neon";
 
 export type SignInState = Readonly<{ error: string | null }>;
 
+export async function continueAsLocalOwner(): Promise<void> {
+  const config = getServerConfig();
+  if (!config.insecureLocalDev) {
+    throw new Error("Local owner sign-in is only available in insecure local mode");
+  }
+  await establishLocalDevSession();
+  redirect("/");
+}
+
+export async function signOutLocalOwner(): Promise<void> {
+  const config = getServerConfig();
+  if (!config.insecureLocalDev) {
+    throw new Error("Local sign-out is only available in insecure local mode");
+  }
+  await clearLocalDevSession();
+  redirect("/auth/sign-in");
+}
+
 export async function signIn(_state: SignInState, formData: FormData): Promise<SignInState> {
+  if (getServerConfig().insecureLocalDev) {
+    return { error: "Use Continue as local owner in insecure local mode." };
+  }
+
   const emailValue = formData.get("email");
   const passwordValue = formData.get("password");
   const email = typeof emailValue === "string" ? emailValue.trim() : "";

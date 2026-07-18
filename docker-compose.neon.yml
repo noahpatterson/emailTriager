@@ -1,0 +1,38 @@
+# Neon-backed app (no local Postgres). Use with a Neon project + Neon Auth.
+# Does NOT enable insecure local mode.
+#
+#   cp .env.example .env.neon
+#   # fill Neon + Google + TOKEN_ENCRYPTION_KEY_V1 (no insecure flags)
+#   docker compose -f docker-compose.neon.yml up --build
+#
+# For production redirects, set GOOGLE_REDIRECT_URI to your public HTTPS callback.
+# Optional: APP_HOST_BIND=0.0.0.0 to publish on all interfaces (default is 127.0.0.1).
+
+services:
+  migrate:
+    build:
+      context: .
+      target: migrate
+    env_file:
+      - .env.neon
+    environment:
+      DATABASE_DRIVER: neon-http
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    ports:
+      - "${APP_HOST_BIND:-127.0.0.1}:3000:3000"
+    env_file:
+      - .env.neon
+    environment:
+      NODE_ENV: production
+      DATABASE_DRIVER: neon-http
+      # Force insecure local off even if mistakenly present in .env.neon
+      INSECURE_LOCAL_DEV: ""
+      ALLOW_INSECURE_LOCAL_DEV: ""
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

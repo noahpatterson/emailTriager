@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
+import { InsecureLocalBanner } from "@/app/insecure-local-banner";
+import { isInsecureLocalDevRequested } from "@/src/server/auth/local-dev-flags";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,9 +14,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const insecureLocal = isInsecureLocalDevRequested();
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body data-insecure-local={insecureLocal ? "true" : undefined}>
+        <InsecureLocalBanner />
+        {children}
+      </body>
     </html>
   );
 }

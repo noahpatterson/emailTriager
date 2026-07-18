@@ -1,0 +1,57 @@
+# Local insecure stack (Postgres + auth bypass). See README “Docker setups → Local insecure”.
+# Neon production: use docker-compose.neon.yml instead — do not set insecure flags there.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: emailtriager
+      POSTGRES_PASSWORD: emailtriager
+      POSTGRES_DB: email_triager
+    # Not published to the host by default. For hybrid host-side debugging, add:
+    #   ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - emailtriager_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emailtriager -d email_triager"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://emailtriager:emailtriager@db:5432/email_triager
+      DATABASE_URL_UNPOOLED: postgresql://emailtriager:emailtriager@db:5432/email_triager
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Local Compose only. Production deploys must set NODE_ENV=production
+      # and must NOT set INSECURE_LOCAL_DEV / ALLOW_INSECURE_LOCAL_DEV.
+      NODE_ENV: development
+      INSECURE_LOCAL_DEV: "true"
+      ALLOW_INSECURE_LOCAL_DEV: I_UNDERSTAND
+      DATABASE_DRIVER: pg
+      DATABASE_URL: postgresql://emailtriager:emailtriager@db:5432/email_triager
+      OWNER_NEON_AUTH_USER_ID: local-dev-owner
+      GOOGLE_REDIRECT_URI: http://localhost:3000/api/oauth/google/callback
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  emailtriager_pgdata:

@@ -5,7 +5,7 @@ import { gmailConnection, syncRun, triageConfig } from "@/db/schema";
 import { Dashboard, type DashboardState } from "@/app/dashboard";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
-import { getNeonAuth } from "@/src/server/auth/neon";
+import { getSession } from "@/src/server/auth/session";
 import { database } from "@/src/server/db";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +43,7 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
 
 async function loadHomeView(): Promise<HomeView> {
   const config = getServerConfig();
-  const { data, error } = await getNeonAuth().getSession();
+  const { data, error } = await getSession();
   const user = data?.user;
   const userId = user?.id;
   if (error || !userId) return { kind: "signed-out" };

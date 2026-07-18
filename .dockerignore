@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+coverage
+*.md
+!README.md
+.DS_Store
+.cursor
+.agents
+agent-transcripts
+archive
+scripts/diagnose-*.ts

@@ -1,11 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getNeonAuth } from "@/src/server/auth/neon";
+import {
+  assertInsecureLocalDevAllowed,
+  isInsecureLocalDevRequested,
+} from "@/src/server/auth/local-dev-flags";
 
-const authMiddleware = getNeonAuth().middleware({
-  loginUrl: "/auth/sign-in",
-});
+export default async function proxy(request: NextRequest) {
+  try {
+    const driver = process.env.DATABASE_DRIVER?.trim().toLowerCase() || "neon-http";
+    assertInsecureLocalDevAllowed(driver);
+  } catch (error) {
+    return new NextResponse(
+      error instanceof Error ? error.message : "Invalid insecure local configuration",
+      { status: 500 },
+    );
+  }
 
-export default function proxy(request: NextRequest) {
+  if (isInsecureLocalDevRequested()) {
+    return NextResponse.next();
+  }
+
   const { pathname } = request.nextUrl;
   // App JSON APIs authorize in the route handler. Neon Auth middleware
   // redirects anonymous requests to an HTML login page, which breaks fetch().
@@ -17,7 +30,9 @@ export default function proxy(request: NextRequest) {
   if (pathname.startsWith("/brand/") || /\.(?:png|jpe?g|gif|webp|svg|ico)$/i.test(pathname)) {
     return NextResponse.next();
   }
-  return authMiddleware(request);
+
+  const { getNeonAuth } = await import("@/src/server/auth/neon");
+  return getNeonAuth().middleware({ loginUrl: "/auth/sign-in" })(request);
 }
 
 export const config = {

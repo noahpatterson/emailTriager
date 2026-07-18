@@ -7,6 +7,12 @@ let auth: NeonAuth | undefined;
 export function getNeonAuth(): NeonAuth {
   if (!auth) {
     const config = getServerConfig();
+    if (config.insecureLocalDev) {
+      throw new Error("Neon Auth is disabled when INSECURE_LOCAL_DEV=true");
+    }
+    if (!config.neonAuthBaseUrl || !config.neonAuthCookieSecret) {
+      throw new Error("Neon Auth is not configured");
+    }
     auth = createNeonAuth({
       baseUrl: config.neonAuthBaseUrl,
       cookies: {

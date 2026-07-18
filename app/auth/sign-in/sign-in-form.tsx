@@ -2,15 +2,34 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { authClient } from "@/src/auth/client";
-import { signIn, type SignInState } from "./actions";
+import { continueAsLocalOwner, signIn, type SignInState } from "./actions";
 
 const initialState: SignInState = { error: null };
 
-export function SignInForm() {
+export function SignInForm({ insecureLocalDev = false }: { insecureLocalDev?: boolean }) {
   const [state, formAction, pending] = useActionState(signIn, initialState);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [googlePending, startGoogle] = useTransition();
-  const busy = pending || googlePending;
+  const [localPending, startLocal] = useTransition();
+  const busy = pending || googlePending || localPending;
+
+  if (insecureLocalDev) {
+    return (
+      <div className="local-dev-sign-in">
+        <p className="inline-warning" role="status">
+          INSECURE LOCAL DEV — Neon Auth is bypassed. This mode must never be exposed beyond your machine.
+        </p>
+        <button
+          className="button"
+          type="button"
+          disabled={busy}
+          onClick={() => startLocal(() => continueAsLocalOwner())}
+        >
+          {localPending ? "Continuing…" : "Continue as local owner"}
+        </button>
+      </div>
+    );
+  }
 
   function signInWithGoogle() {
     setGoogleError(null);

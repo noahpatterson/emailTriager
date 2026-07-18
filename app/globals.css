@@ -1,6 +1,67 @@
 :root { color-scheme: light; --ink:#10231d; --muted:#63716b; --paper:#f5f1e8; --card:#fffdf8; --green:#155d43; --lime:#d8f08c; --line:#d8ddd5; --red:#9b2c2c; }
 * { box-sizing:border-box; }
 body { margin:0; background:radial-gradient(circle at 85% 0,#e4f2c7 0,transparent 28%),var(--paper); color:var(--ink); font-family:Arial,Helvetica,sans-serif; }
+.insecure-local-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #7a4a1d;
+  color: #fff8f0;
+  border-bottom: 1px solid #5c3714;
+}
+.insecure-local-banner-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.insecure-local-banner-summary::-webkit-details-marker { display: none; }
+.insecure-local-banner-summary::after {
+  content: "▾";
+  flex-shrink: 0;
+  opacity: .85;
+  transition: transform .15s ease;
+}
+.insecure-local-banner:not([open]) > .insecure-local-banner-summary::after {
+  transform: rotate(-90deg);
+}
+.insecure-local-banner-title { text-transform: uppercase; }
+.insecure-local-banner-hint {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .75;
+}
+.insecure-local-banner-body {
+  padding: 0 16px 12px;
+  text-align: left;
+  max-width: 920px;
+  margin: 0 auto;
+}
+.insecure-local-banner-body p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.insecure-local-banner-body p:last-child { margin-bottom: 0; }
+.insecure-local-banner-body code {
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, .18);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.local-dev-sign-in { display:grid; gap:14px; width:100%; margin:12px 0 16px; }
+.local-dev-sign-in .button { justify-self:start; }
 button,a { font:inherit; }
 button:focus-visible,a:focus-visible { outline:3px solid #f0c84f; outline-offset:3px; }
 .shell { width:min(1120px,calc(100% - 40px)); margin:auto; padding:52px 0 30px; min-height:100vh; }

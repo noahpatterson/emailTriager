@@ -6,7 +6,7 @@ import { RunResultsList } from "@/app/run-results";
 import { formatRunTime, runMessage, type RunStatus } from "@/app/run-status";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
-import { getNeonAuth } from "@/src/server/auth/neon";
+import { getSession } from "@/src/server/auth/session";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { RunDetailService } from "@/src/server/gmail/run-detail";
 
@@ -27,7 +27,7 @@ export default async function RunDetailPage({
 }) {
   const { id } = await params;
   const config = getServerConfig();
-  const { data, error } = await getNeonAuth().getSession();
+  const { data, error } = await getSession();
   const userId = data?.user?.id;
   if (error || !userId) redirect("/auth/sign-in");
   if (userId !== config.ownerNeonAuthUserId) {

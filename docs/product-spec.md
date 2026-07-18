@@ -200,6 +200,10 @@ The MVP is accepted only when all mandatory criteria pass. Credential-dependent 
 - [ ] Tests prove only the bound Gmail subject is accepted and account replacement requires explicit reset.
 - [ ] Database queries and uniqueness constraints are owner/account scoped; cross-owner fixture attempts return no data and cause no Gmail calls.
 
+#### Non-production exception: insecure local Docker/dev
+
+AC-1’s Neon Auth requirement applies to production and credentialed validation. For local Docker/dev only, `INSECURE_LOCAL_DEV=true` may bypass Neon Auth when all of the following hold: `ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND`, `DATABASE_DRIVER=pg`, and `NODE_ENV` is not `production`. This mode is refused otherwise and must never ship as a production configuration.
+
 ### AC-2: OAuth and secret safety
 
 - [ ] Unit/route tests cover valid OAuth, missing/mismatched/expired/replayed state, callback without owner session, refresh failure, disconnect, reconnect, and different-subject reconnect.

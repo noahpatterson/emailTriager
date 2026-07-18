@@ -1,9 +1,20 @@
+import { NextResponse } from "next/server";
+import { isInsecureLocalDevRequested } from "@/src/server/auth/local-dev-flags";
 import { getNeonAuth } from "@/src/server/auth/neon";
 
-const handler = getNeonAuth().handler();
+const insecure = isInsecureLocalDevRequested();
 
-export const GET = handler.GET;
-export const POST = handler.POST;
-export const PUT = handler.PUT;
-export const PATCH = handler.PATCH;
-export const DELETE = handler.DELETE;
+function unavailable() {
+  return NextResponse.json(
+    { error: "Neon Auth is disabled in insecure local mode" },
+    { status: 404 },
+  );
+}
+
+const neon = insecure ? null : getNeonAuth().handler();
+
+export const GET = neon?.GET ?? unavailable;
+export const POST = neon?.POST ?? unavailable;
+export const PUT = neon?.PUT ?? unavailable;
+export const PATCH = neon?.PATCH ?? unavailable;
+export const DELETE = neon?.DELETE ?? unavailable;

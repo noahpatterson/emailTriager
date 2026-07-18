@@ -1,7 +1,12 @@
 "use client";
 
 import { useTransition } from "react";
+import { signOutLocalOwner } from "@/app/auth/sign-in/actions";
 import { authClient } from "@/src/auth/client";
+
+function isInsecureLocalClient(): boolean {
+  return document.body.dataset.insecureLocal === "true";
+}
 
 export function SignOutButton({
   className = "button",
@@ -14,6 +19,10 @@ export function SignOutButton({
 
   function onSignOut() {
     startTransition(async () => {
+      if (isInsecureLocalClient()) {
+        await signOutLocalOwner();
+        return;
+      }
       await authClient.signOut();
       window.location.assign("/auth/sign-in");
     });

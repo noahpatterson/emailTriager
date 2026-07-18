@@ -6,14 +6,14 @@ import { SignOutButton } from "@/app/auth/sign-out-button";
 import { ContestArchiveTrashPanel } from "@/app/settings/contest-archive-trash";
 import { gmailConnection, triageConfig } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
-import { getNeonAuth } from "@/src/server/auth/neon";
+import { getSession } from "@/src/server/auth/session";
 import { database } from "@/src/server/db";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const config = getServerConfig();
-  const { data, error } = await getNeonAuth().getSession();
+  const { data, error } = await getSession();
   const userId = data?.user?.id;
   if (error || !userId) redirect("/auth/sign-in");
   if (userId !== config.ownerNeonAuthUserId) {

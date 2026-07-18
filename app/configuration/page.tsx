@@ -5,14 +5,14 @@ import { ConfigurationForm } from "@/app/configuration/configuration-form";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
 import { TriageConfigService } from "@/src/server/config/triage";
-import { getNeonAuth } from "@/src/server/auth/neon";
+import { getSession } from "@/src/server/auth/session";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConfigurationPage() {
   const config = getServerConfig();
-  const { data, error } = await getNeonAuth().getSession();
+  const { data, error } = await getSession();
   const userId = data?.user?.id;
   if (error || !userId) redirect("/auth/sign-in");
   if (userId !== config.ownerNeonAuthUserId) {
