@@ -160,13 +160,13 @@ docker compose up --build
 
 4. Open [http://127.0.0.1:3000](http://127.0.0.1:3000) → **Continue as local owner** → connect Gmail → configure → sync.
 
-Compose forces `INSECURE_LOCAL_DEV=true`, `ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND`, and `DATABASE_DRIVER=pg`. A sticky warning banner marks the mode. **Do not expose port 3000 beyond localhost.** Never use these flags on a real deployment.
+Compose forces `APP_PROFILE=local-compose`, `INSECURE_LOCAL_DEV=true`, `ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND`, and `DATABASE_DRIVER=pg`. A sticky warning banner marks the mode. **Do not expose port 3000 beyond localhost.** Never use these flags on a real deployment.
 
 **Hybrid (Compose DB + Bun on host):** publish Postgres as `127.0.0.1:5432:5432` on the `db` service, run `docker compose up db migrate`, then:
 
 ```sh
 bun install --frozen-lockfile
-# .env.local: INSECURE_LOCAL_DEV=true, ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND,
+# .env.local: APP_PROFILE=local-compose, INSECURE_LOCAL_DEV=true, ALLOW_INSECURE_LOCAL_DEV=I_UNDERSTAND,
 # DATABASE_DRIVER=pg,
 # DATABASE_URL=postgresql://emailtriager:emailtriager@localhost:5432/email_triager
 # + Google OAuth + TOKEN_ENCRYPTION_KEY_V1
