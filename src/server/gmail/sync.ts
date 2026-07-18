@@ -73,11 +73,16 @@ export function syncStatusFor(
 export function messageStateAction(
   processingStatus: string | null | undefined,
 ): "process" | "recover" | "skip" {
-  if (processingStatus === "pending" || processingStatus === "failed") {
-    return "recover";
-  }
+  if (processingStatus === "pending") return "recover";
   if (processingStatus === "processed") return "skip";
   return "process";
+}
+
+export function remainingMessageBudget(
+  maximum: number,
+  alreadyProcessed: number,
+): number {
+  return Math.max(0, maximum - alreadyProcessed);
 }
 
 export function destinationFor(outcome: ClassificationOutcome, labels: LabelConfiguration): string | null {
@@ -192,7 +197,7 @@ export class MessageSyncService {
       ))
       .limit(1);
     if (!connection) throw new Error("Gmail is not connected");
-    const bounds = trial ? TRIAL_BOUNDS : config.bounds as SyncBounds;
+    let bounds = trial ? TRIAL_BOUNDS : config.bounds as SyncBounds;
     const terms = config.terms as ClassificationTerms;
     const senderWhitelist = config.senderWhitelist as readonly string[];
     const senderBlocklist = config.senderBlocklist as readonly string[];
@@ -303,9 +308,10 @@ export class MessageSyncService {
           .from(gmailMessageState)
           .where(and(
             eq(gmailMessageState.googleSubject, connection.googleSubject),
-            sql`${gmailMessageState.processingStatus} IN ('pending', 'failed')`,
+            eq(gmailMessageState.processingStatus, "pending"),
           ))
           .limit(bounds.maxTotalMessages);
+        const recoveryCount = recoverable.length;
 
         for (const state of recoverable) {
           let parsed: ParsedMessage | null = null;
@@ -359,7 +365,7 @@ export class MessageSyncService {
               .where(and(
                 eq(gmailMessageState.googleSubject, connection.googleSubject),
                 eq(gmailMessageState.gmailMessageId, state.gmailMessageId),
-                sql`${gmailMessageState.processingStatus} IN ('pending', 'failed')`,
+                eq(gmailMessageState.processingStatus, "pending"),
               ))
               .returning({ gmailMessageId: gmailMessageState.gmailMessageId });
             if (!claimed) continue;
@@ -433,6 +439,32 @@ export class MessageSyncService {
             results,
           };
         }
+        if (remainingMessageBudget(bounds.maxTotalMessages, recoveryCount) === 0) {
+          const status = "bounded_incomplete" as const;
+          await this.db
+            .update(syncRun)
+            .set({
+              status,
+              nextPageToken: initialPageToken,
+              finishedAt: sql`now()`,
+            })
+            .where(eq(syncRun.id, runId));
+          return {
+            runId,
+            status,
+            trial,
+            exhausted: false,
+            nextPageToken: initialPageToken,
+            results,
+          };
+        }
+        bounds = {
+          ...bounds,
+          maxTotalMessages: remainingMessageBudget(
+            bounds.maxTotalMessages,
+            recoveryCount,
+          ),
+        };
       }
 
       const result = await listBounded(
@@ -449,6 +481,7 @@ export class MessageSyncService {
             eq(syncLease.ownerAuthUserId, ownerId),
             eq(syncLease.leaseOwner, runId),
             eq(syncLease.fenceToken, lease.fenceToken),
+            sql`${syncLease.leaseExpiresAt} > now()`,
           ))
           .returning({ fenceToken: syncLease.fenceToken });
         if (!renewed) throw new Error("Synchronization lease lost");
@@ -531,7 +564,7 @@ export class MessageSyncService {
             .update(messageProcessing)
             .set({ processedAt: sql`now()` })
             .where(and(eq(messageProcessing.runId, runId), eq(messageProcessing.gmailMessageId, parsed.id)));
-          if (!trial && !durablePendingRecorded) {
+          if (!trial && durablePendingRecorded) {
             await this.db
               .update(gmailMessageState)
               .set({
