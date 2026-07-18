@@ -1,0 +1,11 @@
+{
+  "projectId": "square-base-25856382",
+  "orgId": "org-twilight-silence-40573519",
+  "branchId": "br-small-star-ajqeh54k",
+  "_init": {
+    "features": [
+      "database",
+      "auth"
+    ]
+  }
+}
