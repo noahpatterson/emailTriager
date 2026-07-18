@@ -108,6 +108,10 @@ function decodeMimeHeader(value: string): string {
 function visibleHtml(html: string): string {
   return html
     .replace(/<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(
+      /<([a-z][\w:-]*)\b(?=[^>]*(?:\bhidden(?:\s|=|>)|\baria-hidden\s*=\s*["']?true\b|\bstyle\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)))[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      " ",
+    )
     .replace(/<[^>]+>/g, " ")
     .replace(/&(?:nbsp|#160);/gi, " ")
     .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&").replace(/&quot;/gi, "\"").replace(/&#39;/gi, "'")

@@ -32,6 +32,22 @@ describe("Gmail MIME parsing", () => {
     expect(parsed.bodyText).not.toContain("secret");
   });
 
+  test("excludes explicitly hidden HTML from classification text", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/html",
+        body: {
+          data: encoded(
+            '<span hidden>urgent</span><i aria-hidden="true">secret</i><b style="display: none">priority</b><p>hello</p>',
+          ),
+        },
+      },
+    });
+    expect(parsed.bodyText).toBe("hello");
+  });
+
   test("rejects invalid base64url", () => {
     expect(() => parseGmailMessage({ id: "m", threadId: "t", payload: { mimeType: "text/plain", body: { data: "***" } } })).toThrow("encoding");
   });

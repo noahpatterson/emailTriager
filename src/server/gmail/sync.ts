@@ -74,7 +74,9 @@ export function messageStateAction(
   processingStatus: string | null | undefined,
 ): "process" | "recover" | "skip" {
   if (processingStatus === "pending") return "recover";
-  if (processingStatus === "processed") return "skip";
+  if (processingStatus === "processed" || processingStatus === "failed") {
+    return "skip";
+  }
   return "process";
 }
 
@@ -386,7 +388,6 @@ export class MessageSyncService {
               .where(and(
                 eq(gmailMessageState.googleSubject, connection.googleSubject),
                 eq(gmailMessageState.gmailMessageId, state.gmailMessageId),
-                eq(gmailMessageState.latestRunId, runId),
                 eq(gmailMessageState.processingStatus, "pending"),
               ));
             results.push({
@@ -408,6 +409,20 @@ export class MessageSyncService {
               state.gmailMessageId,
               error instanceof Error ? error.message : error,
             );
+            await this.db
+              .update(gmailMessageState)
+              .set({
+                outcome: "failed",
+                processingStatus: "failed",
+                processedAt: sql`now()`,
+                updatedAt: sql`now()`,
+              })
+              .where(and(
+                eq(gmailMessageState.googleSubject, connection.googleSubject),
+                eq(gmailMessageState.gmailMessageId, state.gmailMessageId),
+                eq(gmailMessageState.latestRunId, runId),
+                eq(gmailMessageState.processingStatus, "pending"),
+              ));
             results.push({
               gmailMessageId: state.gmailMessageId,
               gmailThreadId: parsed?.threadId ?? null,
@@ -420,25 +435,6 @@ export class MessageSyncService {
           }
         }
 
-        if (failureCount > 0) {
-          const status = syncStatusFor(false, failureCount);
-          await this.db
-            .update(syncRun)
-            .set({
-              status,
-              nextPageToken: initialPageToken,
-              finishedAt: sql`now()`,
-            })
-            .where(eq(syncRun.id, runId));
-          return {
-            runId,
-            status,
-            trial,
-            exhausted: false,
-            nextPageToken: initialPageToken,
-            results,
-          };
-        }
         if (remainingMessageBudget(bounds.maxTotalMessages, recoveryCount) === 0) {
           const status = "bounded_incomplete" as const;
           await this.db

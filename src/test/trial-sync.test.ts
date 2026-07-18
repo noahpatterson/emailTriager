@@ -83,7 +83,7 @@ describe("trial sync bounds", () => {
   test("recovers unresolved durable state and skips completed logical work", () => {
     expect(messageStateAction(undefined)).toBe("process");
     expect(messageStateAction("pending")).toBe("recover");
-    expect(messageStateAction("failed")).toBe("process");
+    expect(messageStateAction("failed")).toBe("skip");
     expect(messageStateAction("processed")).toBe("skip");
     expect(remainingMessageBudget(10, 4)).toBe(6);
     expect(remainingMessageBudget(10, 10)).toBe(0);

@@ -88,7 +88,7 @@ describe("Google OAuth state lifecycle", () => {
     const fetcher = mock(async (input: RequestInfo | URL) => {
       if (String(input).includes("/token")) {
         tokenAttempts += 1;
-        return tokenAttempts === 1
+        return tokenAttempts <= 3
           ? new Response(null, { status: 503 })
           : tokenResponse();
       }
