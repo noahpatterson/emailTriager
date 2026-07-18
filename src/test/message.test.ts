@@ -65,4 +65,28 @@ describe("Gmail MIME parsing", () => {
       },
     })).toThrow("charset");
   });
+
+  test("reads charset from Content-Type headers and rejects malformed encoded words", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "Content-Type", value: "text/plain; charset=iso-8859-1" },
+          { name: "From", value: "sender@example.com" },
+        ],
+        body: { data: Buffer.from([0x63, 0x61, 0x66, 0xe9]).toString("base64url") },
+      },
+    });
+    expect(parsed.bodyText).toBe("café");
+    expect(() => parseGmailMessage({
+      id: "bad",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain",
+        headers: [{ name: "Subject", value: "=?UTF-8?B?***?=" }],
+      },
+    })).toThrow("header encoding");
+  });
 });

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, isNotNull, lt, lte } from "drizzle-orm";
+import { lt, lte } from "drizzle-orm";
 import { gmailMessageState, oauthState, syncRun } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { database, type Database } from "@/src/server/db";
@@ -38,7 +38,7 @@ class DatabaseRetentionStore implements RetentionStore {
   async deleteExpiredRuns(cutoff: Date): Promise<number> {
     const rows = await this.db
       .delete(syncRun)
-      .where(and(isNotNull(syncRun.finishedAt), lt(syncRun.finishedAt, cutoff)))
+      .where(lt(syncRun.startedAt, cutoff))
       .returning({ id: syncRun.id });
     return rows.length;
   }

@@ -51,6 +51,14 @@ type LabelConfiguration = Readonly<{
 }>;
 
 const FORBIDDEN_LABELS = new Set(["TRASH", "SPAM", "UNREAD"]);
+const CLASSIFICATION_OUTCOMES = new Set<ClassificationOutcome>([
+  "priority",
+  "review",
+  "new_contest",
+  "unmatched",
+  "protected",
+  "blocked",
+]);
 const SYNC_LEASE_SECONDS = 300;
 const TRIAL_BOUNDS: SyncBounds = { maxPages: 1, maxMessagesPerPage: 10, maxTotalMessages: 10 };
 
@@ -60,6 +68,16 @@ export function syncStatusFor(
 ): SyncStartResult["status"] {
   if (failureCount > 0) return "partial_failure";
   return exhausted ? "completed" : "bounded_incomplete";
+}
+
+export function messageStateAction(
+  processingStatus: string | null | undefined,
+): "process" | "recover" | "skip" {
+  if (processingStatus === "pending" || processingStatus === "failed") {
+    return "recover";
+  }
+  if (processingStatus === "processed") return "skip";
+  return "process";
 }
 
 export function destinationFor(outcome: ClassificationOutcome, labels: LabelConfiguration): string | null {
@@ -246,14 +264,177 @@ export class MessageSyncService {
     let failureCount = 0;
     try {
       const provider = await this.providerForOwner(ownerId);
+      const catalog = await provider.listLabels();
       const labels = resolveLabelRefs({
         sourceLabelId: config.sourceLabelId,
         priorityLabelId: config.priorityLabelId,
         reviewLabelId: config.reviewLabelId,
         contestLabelId: config.contestLabelId,
         contestArchiveLabelId: config.contestArchiveLabelId,
-      }, await provider.listLabels());
+      }, catalog);
       validateLabels(labels);
+      const assertMutationAllowed = async (): Promise<void> => {
+        const [allowed] = await this.db
+          .select({ fenceToken: syncLease.fenceToken })
+          .from(syncLease)
+          .where(and(
+            eq(syncLease.ownerAuthUserId, ownerId),
+            eq(syncLease.leaseOwner, runId),
+            eq(syncLease.fenceToken, lease.fenceToken),
+            sql`${syncLease.leaseExpiresAt} > now()`,
+            sql`EXISTS (
+              SELECT 1 FROM gmail_connection
+              WHERE owner_auth_user_id = ${ownerId}
+                AND disconnected_at IS NULL
+            )`,
+          ))
+          .limit(1);
+        if (!allowed) throw new Error("Synchronization lease lost");
+      };
+
+      if (!trial) {
+        const recoverable = await this.db
+          .select({
+            gmailMessageId: gmailMessageState.gmailMessageId,
+            configVersion: gmailMessageState.configVersion,
+            outcome: gmailMessageState.outcome,
+            processingStatus: gmailMessageState.processingStatus,
+          })
+          .from(gmailMessageState)
+          .where(and(
+            eq(gmailMessageState.googleSubject, connection.googleSubject),
+            sql`${gmailMessageState.processingStatus} IN ('pending', 'failed')`,
+          ))
+          .limit(bounds.maxTotalMessages);
+
+        for (const state of recoverable) {
+          let parsed: ParsedMessage | null = null;
+          try {
+            const [snapshot] = await this.db
+              .select({
+                sourceLabelId: triageConfig.sourceLabelId,
+                priorityLabelId: triageConfig.priorityLabelId,
+                reviewLabelId: triageConfig.reviewLabelId,
+                contestLabelId: triageConfig.contestLabelId,
+                contestArchiveLabelId: triageConfig.contestArchiveLabelId,
+                terms: triageConfig.terms,
+                senderWhitelist: triageConfig.senderWhitelist,
+                senderBlocklist: triageConfig.senderBlocklist,
+              })
+              .from(triageConfig)
+              .where(and(
+                eq(triageConfig.ownerAuthUserId, ownerId),
+                eq(triageConfig.version, state.configVersion),
+              ))
+              .limit(1);
+            if (!snapshot) throw new Error("Recovery configuration missing");
+            const recoveryLabels = resolveLabelRefs(snapshot, catalog);
+            validateLabels(recoveryLabels);
+            parsed = parseGmailMessage(
+              await provider.getMessage(state.gmailMessageId) as GmailMessage,
+            );
+            const storedOutcome = CLASSIFICATION_OUTCOMES.has(
+              state.outcome as ClassificationOutcome,
+            )
+              ? state.outcome as ClassificationOutcome
+              : null;
+            const classification =
+              state.processingStatus === "pending" && storedOutcome
+                ? { outcome: storedOutcome, reason: "Recovered pending mutation" }
+                : classifyWithReason(
+                    parsed,
+                    snapshot.terms as ClassificationTerms,
+                    snapshot.senderWhitelist as readonly string[],
+                    snapshot.senderBlocklist as readonly string[],
+                  );
+            const [claimed] = await this.db
+              .update(gmailMessageState)
+              .set({
+                latestRunId: runId,
+                outcome: classification.outcome,
+                processingStatus: "pending",
+                processedAt: null,
+                updatedAt: sql`now()`,
+              })
+              .where(and(
+                eq(gmailMessageState.googleSubject, connection.googleSubject),
+                eq(gmailMessageState.gmailMessageId, state.gmailMessageId),
+                sql`${gmailMessageState.processingStatus} IN ('pending', 'failed')`,
+              ))
+              .returning({ gmailMessageId: gmailMessageState.gmailMessageId });
+            if (!claimed) continue;
+            await reconcileLabelMovement(
+              provider,
+              parsed,
+              classification.outcome,
+              recoveryLabels,
+              assertMutationAllowed,
+            );
+            await this.db
+              .update(gmailMessageState)
+              .set({
+                processingStatus: "processed",
+                processedAt: sql`now()`,
+                updatedAt: sql`now()`,
+              })
+              .where(and(
+                eq(gmailMessageState.googleSubject, connection.googleSubject),
+                eq(gmailMessageState.gmailMessageId, state.gmailMessageId),
+                eq(gmailMessageState.latestRunId, runId),
+                eq(gmailMessageState.processingStatus, "pending"),
+              ));
+            results.push({
+              gmailMessageId: parsed.id,
+              gmailThreadId: parsed.threadId,
+              subject: parsed.subject,
+              senderAddress: parsed.from,
+              outcome: classification.outcome,
+              reason: classification.reason,
+              proposedLabelId: destinationFor(
+                classification.outcome,
+                recoveryLabels,
+              ),
+            });
+          } catch (error) {
+            failureCount += 1;
+            console.error(
+              "Message recovery failed",
+              state.gmailMessageId,
+              error instanceof Error ? error.message : error,
+            );
+            results.push({
+              gmailMessageId: state.gmailMessageId,
+              gmailThreadId: parsed?.threadId ?? null,
+              subject: parsed?.subject ?? null,
+              senderAddress: parsed?.from ?? null,
+              outcome: "failed",
+              reason: "Message recovery failed",
+              proposedLabelId: null,
+            });
+          }
+        }
+
+        if (failureCount > 0) {
+          const status = syncStatusFor(false, failureCount);
+          await this.db
+            .update(syncRun)
+            .set({
+              status,
+              nextPageToken: initialPageToken,
+              finishedAt: sql`now()`,
+            })
+            .where(eq(syncRun.id, runId));
+          return {
+            runId,
+            status,
+            trial,
+            exhausted: false,
+            nextPageToken: initialPageToken,
+            results,
+          };
+        }
+      }
+
       const result = await listBounded(
         provider,
         labels.sourceLabelId,
@@ -271,7 +452,21 @@ export class MessageSyncService {
           ))
           .returning({ fenceToken: syncLease.fenceToken });
         if (!renewed) throw new Error("Synchronization lease lost");
+        if (!trial) {
+          const [existingState] = await this.db
+            .select({ processingStatus: gmailMessageState.processingStatus })
+            .from(gmailMessageState)
+            .where(and(
+              eq(gmailMessageState.googleSubject, connection.googleSubject),
+              eq(gmailMessageState.gmailMessageId, messageId),
+            ))
+            .limit(1);
+          if (messageStateAction(existingState?.processingStatus) === "skip") {
+            continue;
+          }
+        }
         let parsed: ParsedMessage | null = null;
+        let durablePendingRecorded = false;
         try {
           parsed = parseGmailMessage(await provider.getMessage(messageId) as GmailMessage);
           const { outcome, reason } = classifyWithReason(parsed, terms, senderWhitelist, senderBlocklist);
@@ -290,60 +485,53 @@ export class MessageSyncService {
             })
             .onConflictDoNothing();
           if (!trial) {
-            await this.db
+            const inserted = await this.db
               .insert(gmailMessageState)
               .values({
                 googleSubject: connection.googleSubject,
                 gmailMessageId: parsed.id,
                 latestRunId: runId,
+                configVersion: config.version,
                 outcome,
                 processingStatus: "pending",
                 processedAt: null,
                 updatedAt: sql`now()`,
               })
-              .onConflictDoUpdate({
-                target: [
-                  gmailMessageState.googleSubject,
-                  gmailMessageState.gmailMessageId,
-                ],
-                set: {
+              .onConflictDoNothing()
+              .returning({ gmailMessageId: gmailMessageState.gmailMessageId });
+            if (inserted.length === 0) {
+              const [claimed] = await this.db
+                .update(gmailMessageState)
+                .set({
                   latestRunId: runId,
+                  configVersion: config.version,
                   outcome,
                   processingStatus: "pending",
                   processedAt: null,
                   updatedAt: sql`now()`,
-                },
-              });
+                })
+                .where(and(
+                  eq(gmailMessageState.googleSubject, connection.googleSubject),
+                  eq(gmailMessageState.gmailMessageId, parsed.id),
+                  eq(gmailMessageState.processingStatus, "failed"),
+                ))
+                .returning({ gmailMessageId: gmailMessageState.gmailMessageId });
+              if (!claimed) throw new Error("Message state requires recovery");
+            }
+            durablePendingRecorded = true;
             await reconcileLabelMovement(
               provider,
               parsed,
               outcome,
               labels,
-              async () => {
-                const [allowed] = await this.db
-                  .select({ fenceToken: syncLease.fenceToken })
-                  .from(syncLease)
-                  .where(and(
-                    eq(syncLease.ownerAuthUserId, ownerId),
-                    eq(syncLease.leaseOwner, runId),
-                    eq(syncLease.fenceToken, lease.fenceToken),
-                    sql`${syncLease.leaseExpiresAt} > now()`,
-                    sql`EXISTS (
-                      SELECT 1 FROM gmail_connection
-                      WHERE owner_auth_user_id = ${ownerId}
-                        AND disconnected_at IS NULL
-                    )`,
-                  ))
-                  .limit(1);
-                if (!allowed) throw new Error("Synchronization lease lost");
-              },
+              assertMutationAllowed,
             );
           }
           await this.db
             .update(messageProcessing)
             .set({ processedAt: sql`now()` })
             .where(and(eq(messageProcessing.runId, runId), eq(messageProcessing.gmailMessageId, parsed.id)));
-          if (!trial) {
+          if (!trial && !durablePendingRecorded) {
             await this.db
               .update(gmailMessageState)
               .set({
@@ -391,24 +579,13 @@ export class MessageSyncService {
                 googleSubject: connection.googleSubject,
                 gmailMessageId: messageId,
                 latestRunId: runId,
+                configVersion: config.version,
                 outcome: "failed",
                 processingStatus: "failed",
                 processedAt: sql`now()`,
                 updatedAt: sql`now()`,
               })
-              .onConflictDoUpdate({
-                target: [
-                  gmailMessageState.googleSubject,
-                  gmailMessageState.gmailMessageId,
-                ],
-                set: {
-                  latestRunId: runId,
-                  outcome: "failed",
-                  processingStatus: "failed",
-                  processedAt: sql`now()`,
-                  updatedAt: sql`now()`,
-                },
-              });
+              .onConflictDoNothing();
           }
           results.push({
             gmailMessageId: messageId,

@@ -42,7 +42,8 @@ function termMatches(corpus: string, term: string): boolean {
 
 export function parseMailboxAddress(header: string): string | null {
   const value = header.trim();
-  if (!value || /[:,;]/u.test(value)) return null;
+  const withoutQuotedDisplayNames = value.replace(/"(?:\\.|[^"\\])*"/gu, "\"\"");
+  if (!value || /[:,;]/u.test(withoutQuotedDisplayNames)) return null;
   const angleMatches = [...value.matchAll(/<([^<>]+)>/gu)];
   if (angleMatches.length > 1) return null;
   const angleMatch = angleMatches[0];

@@ -11,7 +11,9 @@ Revoke the Google grant, clear local token ciphertext, rotate the versioned encr
 
 Run `bun run retention:run` on a daily scheduler. It removes expired OAuth
 state immediately and finished run/message state older than `RETENTION_DAYS`
-(default 30). Run observations cascade with their expired runs.
+(default 30). Abandoned running rows also expire. Run observations cascade
+with their expired runs; the normalized sender retained for run review is
+bounded by the same policy.
 
 ## Optional validation
 `TEST_DATABASE_URL` enables isolated database checks. `LIVE_GMAIL_TEST=1` plus dedicated credentials enables live checks only after account, unique-label, and run-marker preflight; otherwise suites must report a named skip.

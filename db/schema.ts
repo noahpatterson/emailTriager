@@ -121,6 +121,9 @@ export const messageProcessing = pgTable(
     gmailThreadId: text("gmail_thread_id"),
     internalDate: timestamp("internal_date", { withTimezone: true }),
     senderAddress: text("sender_address"),
+    // Retained for expand/contract rollback compatibility; new writes omit both.
+    subject: text("subject"),
+    labelIds: jsonb("label_ids"),
     outcome: text("outcome"),
     outcomeReason: text("outcome_reason"),
     errorCode: text("error_code"),
@@ -141,8 +144,8 @@ export const gmailMessageState = pgTable(
     googleSubject: text("google_subject").notNull(),
     gmailMessageId: text("gmail_message_id").notNull(),
     latestRunId: uuid("latest_run_id")
-      .notNull()
-      .references(() => syncRun.id, { onDelete: "cascade" }),
+      .references(() => syncRun.id, { onDelete: "set null" }),
+    configVersion: integer("config_version").notNull(),
     outcome: text("outcome").notNull(),
     processingStatus: text("processing_status").notNull(),
     processedAt: timestamp("processed_at", { withTimezone: true }),

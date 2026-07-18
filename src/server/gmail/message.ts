@@ -74,6 +74,8 @@ function decodeQuotedPrintableWord(value: string): Uint8Array {
     } else if (character === "=" && /^[0-9A-Fa-f]{2}$/u.test(value.slice(index + 1, index + 3))) {
       bytes.push(Number.parseInt(value.slice(index + 1, index + 3), 16));
       index += 2;
+    } else if (character === "=") {
+      throw new Error("Invalid MIME header encoding");
     } else {
       bytes.push(character.charCodeAt(0));
     }
@@ -86,9 +88,18 @@ function decodeMimeHeader(value: string): string {
   return unfolded.replace(
     /=\?([^?]+)\?([bq])\?([^?]*)\?=/giu,
     (_word, charset: string, encoding: string, encoded: string) => {
-      const bytes = encoding.toLowerCase() === "b"
-        ? Buffer.from(encoded, "base64")
-        : decodeQuotedPrintableWord(encoded);
+      let bytes: Uint8Array;
+      if (encoding.toLowerCase() === "b") {
+        if (
+          !/^[A-Za-z0-9+/]*={0,2}$/u.test(encoded)
+          || encoded.length % 4 !== 0
+        ) {
+          throw new Error("Invalid MIME header encoding");
+        }
+        bytes = Buffer.from(encoded, "base64");
+      } else {
+        bytes = decodeQuotedPrintableWord(encoded);
+      }
       return decodeBytes(bytes, charset);
     },
   );
@@ -117,7 +128,13 @@ export function parseGmailMessage(message: GmailMessage): ParsedMessage {
       bytes += raw.byteLength;
       if (bytes > MAX_MESSAGE_BYTES) throw new Error("Message exceeds limit");
       const mime = part.mimeType?.toLowerCase().split(";", 1)[0];
-      const decoded = decodeBytes(raw, charsetFromMimeType(part.mimeType));
+      const contentType = part.headers?.find(
+        (header) => header.name?.toLowerCase() === "content-type",
+      )?.value;
+      const decoded = decodeBytes(
+        raw,
+        charsetFromMimeType(contentType ?? part.mimeType),
+      );
       if (mime === "text/plain") plain.push(decoded);
       else if (mime === "text/html") html.push(visibleHtml(decoded));
     }

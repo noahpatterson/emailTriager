@@ -92,6 +92,7 @@ export class ContestArchivePurgeService {
               eq(syncLease.ownerAuthUserId, ownerId),
               eq(syncLease.leaseOwner, purgeId),
               eq(syncLease.fenceToken, lease.fenceToken),
+              sql`${syncLease.leaseExpiresAt} > now()`,
             ))
             .returning({ fenceToken: syncLease.fenceToken });
           if (!renewed) throw new Error("Purge lease lost");

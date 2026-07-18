@@ -5,6 +5,7 @@ import { DeterministicGmailFake } from "../server/gmail/fake";
 import {
   destinationFor,
   listBounded,
+  messageStateAction,
   reconcileLabelMovement,
   syncStatusFor,
 } from "../server/gmail/sync";
@@ -76,6 +77,13 @@ describe("trial sync bounds", () => {
     expect(syncStatusFor(false, 0)).toBe("bounded_incomplete");
     expect(syncStatusFor(true, 1)).toBe("partial_failure");
     expect(syncStatusFor(false, 1)).toBe("partial_failure");
+  });
+
+  test("recovers unresolved durable state and skips completed logical work", () => {
+    expect(messageStateAction(undefined)).toBe("process");
+    expect(messageStateAction("pending")).toBe("recover");
+    expect(messageStateAction("failed")).toBe("recover");
+    expect(messageStateAction("processed")).toBe("skip");
   });
 });
 
