@@ -63,6 +63,7 @@ export class RunDetailService {
       .select({
         gmailMessageId: messageProcessing.gmailMessageId,
         gmailThreadId: messageProcessing.gmailThreadId,
+        subject: messageProcessing.subject,
         senderAddress: messageProcessing.senderAddress,
         outcome: messageProcessing.outcome,
         outcomeReason: messageProcessing.outcomeReason,
@@ -89,11 +90,7 @@ export class RunDetailService {
       startedAt: owned.startedAt.toISOString(),
       finishedAt: owned.finishedAt?.toISOString() ?? null,
       errorSummary: owned.errorSummary,
-      results: buildRunResultRows(
-        messages.map((message) => ({ ...message, subject: null })),
-        config ?? null,
-        catalog,
-      ),
+      results: buildRunResultRows(messages, config ?? null, catalog),
     };
   }
 }

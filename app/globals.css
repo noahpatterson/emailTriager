@@ -124,6 +124,7 @@ footer { display:flex; justify-content:space-between; color:var(--muted); font-s
 .config-form textarea{resize:vertical;min-height:110px;line-height:1.45}
 .config-form input:focus,.config-form textarea:focus{outline:3px solid #f0c84f;outline-offset:2px}
 .config-actions{display:flex;justify-content:flex-start}
+.config-form fieldset .config-actions{margin-top:14px}
 .trial-card{border-color:#c4a35a;box-shadow:0 12px 40px rgba(112,75,9,.08)}
 .trial-toggle{display:flex;align-items:flex-start;gap:12px;margin:14px 0 16px;cursor:pointer}
 .trial-toggle input{margin-top:4px;width:18px;height:18px;accent-color:var(--green)}

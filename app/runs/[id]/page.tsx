@@ -6,6 +6,7 @@ import { RunResultsList } from "@/app/run-results";
 import { formatRunTime, runMessage, type RunStatus } from "@/app/run-status";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
+import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { RunDetailService } from "@/src/server/gmail/run-detail";
@@ -48,7 +49,10 @@ export default async function RunDetailPage({
     provider = undefined;
   }
 
-  const detail = await new RunDetailService().get(userId, id, provider);
+  const [detail, gmailMessageLinkRoot] = await Promise.all([
+    new RunDetailService().get(userId, id, provider),
+    new OwnerPreferencesService().getGmailMessageLinkRoot(userId),
+  ]);
   if (!detail) notFound();
 
   return <main className="shell">
@@ -87,8 +91,8 @@ export default async function RunDetailPage({
       <p className="run-detail-summary">{detail.errorSummary ?? runMessage(detail.status, detail.trial)}</p>
       <p className="field-help">
         {detail.trial
-          ? "Message links and normalized senders only — subjects and bodies are not retained. Labels shown are proposals."
-          : "Message links and normalized senders only — subjects and bodies are not retained. Labels shown are destinations for classified messages."}
+          ? "Subjects and senders only — no message bodies. Labels shown are proposals."
+          : "Subjects and senders only — no message bodies. Labels shown are destinations for classified messages."}
       </p>
       <div className="run-detail-actions">
         <DeleteRunButton runId={detail.id} trial={detail.trial} />
@@ -97,6 +101,7 @@ export default async function RunDetailPage({
         results={detail.results}
         emptyTitle="No messages in this run"
         emptyDescription="This run finished without recording any processed messages."
+        gmailMessageLinkRoot={gmailMessageLinkRoot}
       />
     </section>
   </main>;

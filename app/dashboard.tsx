@@ -23,6 +23,7 @@ export type DashboardRun = Readonly<{
 export type DashboardState = Readonly<{
   connected: boolean;
   configured: boolean;
+  gmailMessageLinkRoot: string;
   runs: readonly DashboardRun[];
 }>;
 export type DashboardUser = Readonly<{ name: string; email: string }>;
@@ -301,6 +302,7 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
           results={trialResults}
           emptyTitle="No trial batch yet"
           emptyDescription="Run a trial to preview how the next 10 messages would be labeled."
+          gmailMessageLinkRoot={state.gmailMessageLinkRoot}
         />
       </section>
     )}
@@ -311,7 +313,7 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
           <p className="step">RECENT ACTIVITY</p>
           <h2>Sync runs</h2>
         </div>
-        <p>Open a run to review message links, normalized senders, and outcomes. Message subjects and bodies are not retained.</p>
+        <p>Open a run to review subjects, senders, and outcomes. Message bodies are never shown.</p>
       </div>
       {state.runs.length === 0 ? (
         <div className="empty">

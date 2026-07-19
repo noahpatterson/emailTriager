@@ -29,6 +29,9 @@ export const ownerBinding = pgTable(
   {
     singleton: boolean("singleton").primaryKey().default(true),
     authUserId: text("auth_user_id").notNull().unique(),
+    gmailMessageLinkRoot: text("gmail_message_link_root")
+      .notNull()
+      .default("https://mail.google.com/mail/u/0/"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [check("owner_binding_singleton_check", sql`${table.singleton}`)],

@@ -5,6 +5,7 @@ import { gmailConnection, syncRun, triageConfig } from "@/db/schema";
 import { Dashboard, type DashboardState } from "@/app/dashboard";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
+import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
 import { database } from "@/src/server/db";
 
@@ -17,7 +18,7 @@ type HomeView =
 
 async function getDashboardState(ownerId: string): Promise<DashboardState> {
   const db = database();
-  const [connection, configuration, runs] = await Promise.all([
+  const [connection, configuration, runs, gmailMessageLinkRoot] = await Promise.all([
     db.select({ ownerAuthUserId: gmailConnection.ownerAuthUserId }).from(gmailConnection).where(and(eq(gmailConnection.ownerAuthUserId, ownerId), isNull(gmailConnection.disconnectedAt))).limit(1),
     db.select({ version: triageConfig.version }).from(triageConfig).where(eq(triageConfig.ownerAuthUserId, ownerId)).orderBy(desc(triageConfig.version)).limit(1),
     db.select({
@@ -29,10 +30,12 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
       errorSummary: syncRun.errorSummary,
       nextPageToken: syncRun.nextPageToken,
     }).from(syncRun).where(eq(syncRun.ownerAuthUserId, ownerId)).orderBy(desc(syncRun.startedAt)).limit(8),
+    new OwnerPreferencesService(db).getGmailMessageLinkRoot(ownerId),
   ]);
   return {
     connected: connection.length > 0,
     configured: configuration.length > 0,
+    gmailMessageLinkRoot,
     runs: runs.map((run) => ({
       ...run,
       trial: run.trial,

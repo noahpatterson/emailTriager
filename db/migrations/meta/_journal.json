@@ -57,6 +57,13 @@
       "when": 1784415600000,
       "tag": "0008_message_state_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784418000000,
+      "tag": "0009_gmail_message_link_root",
+      "breakpoints": true
     }
   ]
 }

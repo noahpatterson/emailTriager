@@ -74,6 +74,10 @@ describe("run detail review mapping", () => {
       .toBe("https://mail.google.com/mail/u/0/#all/thread99");
     expect(gmailMessageUrl({ gmailMessageId: "m1", gmailThreadId: null }))
       .toBe("https://mail.google.com/mail/u/0/#all/m1");
+    expect(gmailMessageUrl(
+      { gmailMessageId: "m1", gmailThreadId: "thread99" },
+      "https://mail.google.com/mail/u/2/",
+    )).toBe("https://mail.google.com/mail/u/2/#all/thread99");
   });
 });
 
