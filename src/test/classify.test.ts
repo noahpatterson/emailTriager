@@ -54,6 +54,7 @@ describe("local deterministic classification", () => {
   test("protects exact whitelisted senders and ambiguous sender headers", () => {
     expect(parseMailboxAddress("Person <USER@Example.COM>")).toBe("user@example.com");
     expect(parseMailboxAddress("\"Doe, Jane\" <jane@example.com>")).toBe("jane@example.com");
+    expect(parseMailboxAddress("\"Team <Support>\" <support@example.com>")).toBe("support@example.com");
     expect(parseMailboxAddress("A <a@example.com>, B <b@example.com>")).toBeNull();
     expect(parseMailboxAddress("Friends: a@example.com, b@example.com;")).toBeNull();
     expect(classifyMessage(message({ from: "Person <sender@example.com>", subject: "urgent" }), terms, ["sender@example.com"])).toBe("protected");
@@ -63,6 +64,11 @@ describe("local deterministic classification", () => {
       terms,
       [],
     )).toBe("protected");
+    expect(classifyMessage(
+      message({ from: "\"Team <Support>\" <support@example.com>", subject: "urgent" }),
+      terms,
+      [],
+    )).not.toBe("protected");
   });
 
   test("starred messages are protected and skip term/blocklist classification", () => {

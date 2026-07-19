@@ -17,13 +17,26 @@ export async function POST(request: Request): Promise<Response> {
   try {
     requireSameOrigin(request);
     const owner = await requireOwner();
-    const body = await request.json() as { gmailMessageLinkRoot?: unknown };
-    if (typeof body.gmailMessageLinkRoot !== "string") {
-      return Response.json({ error: "Gmail message link root is required." }, { status: 400 });
+    const invalidBody = Response.json(
+      { error: "Gmail message link root is required." },
+      { status: 400 },
+    );
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return invalidBody;
+    }
+    if (body === null || typeof body !== "object") {
+      return invalidBody;
+    }
+    const gmailMessageLinkRootValue = (body as { gmailMessageLinkRoot?: unknown }).gmailMessageLinkRoot;
+    if (typeof gmailMessageLinkRootValue !== "string") {
+      return invalidBody;
     }
     try {
       const gmailMessageLinkRoot = await new OwnerPreferencesService()
-        .setGmailMessageLinkRoot(owner.userId, body.gmailMessageLinkRoot);
+        .setGmailMessageLinkRoot(owner.userId, gmailMessageLinkRootValue);
       return Response.json({ gmailMessageLinkRoot });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "";

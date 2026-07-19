@@ -109,7 +109,7 @@ function visibleHtml(html: string): string {
   return html
     .replace(/<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
     .replace(
-      /<([a-z][\w:-]*)\b(?=[^>]*(?:\bhidden(?:\s|=|>)|\baria-hidden\s*=\s*["']?true\b|\bstyle\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)))[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      /<([a-z][\w:-]*)\b(?=[^>]*(?:\bhidden(?:\s|=|>)|\baria-hidden\s*=\s*["']?true\b|\bstyle\s*=\s*(?:["'][^"']*|[^"'\s>]*)(?:display\s*:\s*none|visibility\s*:\s*hidden)))[^>]*>[\s\S]*?<\/\1\s*>/gi,
       " ",
     )
     .replace(/<[^>]+>/g, " ")
@@ -132,15 +132,17 @@ export function parseGmailMessage(message: GmailMessage): ParsedMessage {
       bytes += raw.byteLength;
       if (bytes > MAX_MESSAGE_BYTES) throw new Error("Message exceeds limit");
       const mime = part.mimeType?.toLowerCase().split(";", 1)[0];
-      const contentType = part.headers?.find(
-        (header) => header.name?.toLowerCase() === "content-type",
-      )?.value;
-      const decoded = decodeBytes(
-        raw,
-        charsetFromMimeType(contentType ?? part.mimeType),
-      );
-      if (mime === "text/plain") plain.push(decoded);
-      else if (mime === "text/html") html.push(visibleHtml(decoded));
+      if (mime === "text/plain" || mime === "text/html") {
+        const contentType = part.headers?.find(
+          (header) => header.name?.toLowerCase() === "content-type",
+        )?.value;
+        const decoded = decodeBytes(
+          raw,
+          charsetFromMimeType(contentType ?? part.mimeType),
+        );
+        if (mime === "text/plain") plain.push(decoded);
+        else html.push(visibleHtml(decoded));
+      }
     }
     for (const child of part.parts ?? []) visit(child, depth + 1);
   };

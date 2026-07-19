@@ -48,6 +48,40 @@ describe("Gmail MIME parsing", () => {
     expect(parsed.bodyText).toBe("hello");
   });
 
+  test("excludes unquoted hidden style attributes from classification text", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/html",
+        body: {
+          data: encoded(
+            "<span style=display:none>urgent</span><div style=visibility:hidden>secret</div><p>hello</p>",
+          ),
+        },
+      },
+    });
+    expect(parsed.bodyText).toBe("hello");
+  });
+
+  test("counts non-text MIME parts without decoding them", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "multipart/mixed",
+        parts: [
+          {
+            mimeType: "application/octet-stream",
+            body: { data: Buffer.from([0xff, 0xfe, 0x00]).toString("base64url") },
+          },
+          { mimeType: "text/plain", body: { data: encoded("ok") } },
+        ],
+      },
+    });
+    expect(parsed.bodyText).toBe("ok");
+  });
+
   test("rejects invalid base64url", () => {
     expect(() => parseGmailMessage({ id: "m", threadId: "t", payload: { mimeType: "text/plain", body: { data: "***" } } })).toThrow("encoding");
   });
