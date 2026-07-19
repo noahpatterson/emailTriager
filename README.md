@@ -64,7 +64,7 @@ Keep `TOKEN_ENCRYPTION_KEY_V1` stable. Rotating it without re-connecting Gmail m
 
 **Notes**
 
-- The app requests modify access so it can add/remove labels (and, on the explicit danger-zone path, move contest-archive mail to Gmail Trash). It does not send mail.
+- The app requests modify access so it can add/remove labels (and, on the explicit danger-zone path, move archive mail to Gmail Trash). It does not send mail.
 - Changing the redirect URI requires updating **both** Google Console and `GOOGLE_REDIRECT_URI`.
 - Prefer a dedicated test Gmail account and test labels until you trust the setup.
 

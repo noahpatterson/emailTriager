@@ -64,8 +64,8 @@ export default async function RunDetailPage({
           <h1>{detail.trial ? "Trial run" : "Sync run"}</h1>
           <p className="lede">
             {detail.trial
-              ? "Proposed label changes from this dry-run. Gmail was not mutated. Blocked and unmatched propose contest-archive."
-              : "Messages processed in this bounded sync. Classified destinations plus contest-archive for blocked and unmatched were applied."}
+              ? "Proposed label changes from this dry-run. Gmail was not mutated. Blocked and unmatched propose archive."
+              : "Messages processed in this bounded sync. Classified destinations plus archive for blocked and unmatched were applied."}
           </p>
         </div>
       </div>

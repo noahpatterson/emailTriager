@@ -13,7 +13,7 @@ const message = (overrides: Partial<ParsedMessage> = {}): ParsedMessage => ({
   bodyText: "",
   ...overrides,
 });
-const terms = { priority: ["urgent"], review: ["review me"], newContest: ["new contest"] };
+const terms = { priority: ["urgent"], review: ["review me"], new: ["new inquiry"] };
 
 describe("local deterministic classification", () => {
   test("normalizes, deduplicates, and applies Unicode token boundaries", () => {
@@ -23,7 +23,7 @@ describe("local deterministic classification", () => {
   });
 
   test("matches whole words only, not substrings inside larger tokens", () => {
-    const shortTerms = { priority: ["win", "ai"], review: [], newContest: [] };
+    const shortTerms = { priority: ["win", "ai"], review: [], new: [] };
     expect(classifyMessage(message({ subject: "You can win today" }), shortTerms, [])).toBe("priority");
     expect(classifyMessage(message({ subject: "winning streak" }), shortTerms, [])).toBe("unmatched");
     expect(classifyMessage(message({ bodyText: "AI tools" }), shortTerms, [])).toBe("priority");
@@ -32,7 +32,7 @@ describe("local deterministic classification", () => {
   });
 
   test("does not match contraction prefixes across apostrophes", () => {
-    const shortTerms = { priority: ["won", "can", "don"], review: [], newContest: [] };
+    const shortTerms = { priority: ["won", "can", "don"], review: [], new: [] };
     expect(classifyMessage(message({ bodyText: "I won't attend" }), shortTerms, [])).toBe("unmatched");
     expect(classifyMessage(message({ bodyText: "I can't attend" }), shortTerms, [])).toBe("unmatched");
     expect(classifyMessage(message({ bodyText: "I can’t attend" }), shortTerms, [])).toBe("unmatched"); // U+2019
@@ -40,15 +40,15 @@ describe("local deterministic classification", () => {
     expect(classifyMessage(message({ bodyText: "I won today" }), shortTerms, [])).toBe("priority");
     expect(classifyMessage(message({ bodyText: "yes we can" }), shortTerms, [])).toBe("priority");
 
-    const literalContraction = { priority: ["won't"], review: [], newContest: [] };
+    const literalContraction = { priority: ["won't"], review: [], new: [] };
     expect(classifyMessage(message({ bodyText: "I won't attend" }), literalContraction, [])).toBe("priority");
     expect(classifyMessage(message({ bodyText: "I won today" }), literalContraction, [])).toBe("unmatched");
   });
 
-  test("uses priority then review then contest precedence", () => {
-    expect(classifyMessage(message({ subject: "new contest; review me; urgent" }), terms, [])).toBe("priority");
-    expect(classifyMessage(message({ subject: "new contest — review   me" }), terms, [])).toBe("review");
-    expect(classifyMessage(message({ subject: "A new contest" }), terms, [])).toBe("new_contest");
+  test("uses priority then review then new precedence", () => {
+    expect(classifyMessage(message({ subject: "new inquiry; review me; urgent" }), terms, [])).toBe("priority");
+    expect(classifyMessage(message({ subject: "new inquiry — review   me" }), terms, [])).toBe("review");
+    expect(classifyMessage(message({ subject: "A new inquiry" }), terms, [])).toBe("new");
   });
 
   test("protects exact whitelisted senders and ambiguous sender headers", () => {
@@ -69,7 +69,7 @@ describe("local deterministic classification", () => {
     expect(classifyMessage(message({
       labelIds: ["source", "STARRED"],
       subject: "urgent",
-      bodyText: "new contest review me",
+      bodyText: "new inquiry review me",
     }), terms, [], ["sender@example.com"])).toBe("protected");
     expect(classifyMessage(message({
       labelIds: ["STARRED"],

@@ -49,8 +49,8 @@ export class RunDetailService {
         sourceLabelId: triageConfig.sourceLabelId,
         priorityLabelId: triageConfig.priorityLabelId,
         reviewLabelId: triageConfig.reviewLabelId,
-        contestLabelId: triageConfig.contestLabelId,
-        contestArchiveLabelId: triageConfig.contestArchiveLabelId,
+        newLabelId: triageConfig.newLabelId,
+        archiveLabelId: triageConfig.archiveLabelId,
       })
       .from(triageConfig)
       .where(and(

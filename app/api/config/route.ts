@@ -22,8 +22,8 @@ function parseBody(body: unknown): TriageConfigInput | null {
     typeof record.sourceLabelId !== "string"
     || typeof record.priorityLabelId !== "string"
     || typeof record.reviewLabelId !== "string"
-    || typeof record.contestLabelId !== "string"
-    || typeof record.contestArchiveLabelId !== "string"
+    || typeof record.newLabelId !== "string"
+    || typeof record.archiveLabelId !== "string"
     || !bounds
   ) {
     return null;
@@ -32,8 +32,8 @@ function parseBody(body: unknown): TriageConfigInput | null {
     sourceLabelId: record.sourceLabelId,
     priorityLabelId: record.priorityLabelId,
     reviewLabelId: record.reviewLabelId,
-    contestLabelId: record.contestLabelId,
-    contestArchiveLabelId: record.contestArchiveLabelId,
+    newLabelId: record.newLabelId,
+    archiveLabelId: record.archiveLabelId,
     terms: asTerms(record.terms),
     senderWhitelist: asStringArray(record.senderWhitelist),
     senderBlocklist: asStringArray(record.senderBlocklist),

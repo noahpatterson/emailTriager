@@ -6,15 +6,15 @@ const labels = {
   sourceLabelId: "Label_source",
   priorityLabelId: "Label_priority",
   reviewLabelId: "Label_review",
-  contestLabelId: "Label_contest",
-  contestArchiveLabelId: "Label_archive",
+  newLabelId: "Label_new",
+  archiveLabelId: "Label_archive",
 };
 
 const catalog = [
   { id: "Label_priority", name: "Triage/Priority" },
   { id: "Label_review", name: "Triage/Review" },
-  { id: "Label_contest", name: "Triage/New contest" },
-  { id: "Label_archive", name: "Triage/Contest archive" },
+  { id: "Label_new", name: "Triage/New" },
+  { id: "Label_archive", name: "Triage/Archive" },
 ] as const;
 
 describe("run detail review mapping", () => {
@@ -22,7 +22,7 @@ describe("run detail review mapping", () => {
     const rows = buildRunResultRows([
       { gmailMessageId: "m1", gmailThreadId: "t1", subject: "Winner!", senderAddress: "a@example.com", outcome: "priority" },
       { gmailMessageId: "m2", gmailThreadId: "t2", subject: "Please review", senderAddress: "b@example.com", outcome: "review" },
-      { gmailMessageId: "m3", gmailThreadId: "t3", subject: "Enter now", senderAddress: "c@example.com", outcome: "new_contest" },
+      { gmailMessageId: "m3", gmailThreadId: "t3", subject: "Enter now", senderAddress: "c@example.com", outcome: "new" },
       { gmailMessageId: "m4", gmailThreadId: "t4", subject: "Hello", senderAddress: "d@example.com", outcome: "unmatched" },
       { gmailMessageId: "m5", gmailThreadId: "t5", subject: "VIP", senderAddress: "e@example.com", outcome: "protected" },
       { gmailMessageId: "m6", gmailThreadId: "t6", subject: "Blocked", senderAddress: "f@example.com", outcome: "blocked" },
@@ -32,7 +32,7 @@ describe("run detail review mapping", () => {
     expect(rows).toEqual([
       { gmailMessageId: "m1", gmailThreadId: "t1", subject: "Winner!", senderAddress: "a@example.com", outcome: "priority", reason: null, proposedLabelId: "Label_priority" },
       { gmailMessageId: "m2", gmailThreadId: "t2", subject: "Please review", senderAddress: "b@example.com", outcome: "review", reason: null, proposedLabelId: "Label_review" },
-      { gmailMessageId: "m3", gmailThreadId: "t3", subject: "Enter now", senderAddress: "c@example.com", outcome: "new_contest", reason: null, proposedLabelId: "Label_contest" },
+      { gmailMessageId: "m3", gmailThreadId: "t3", subject: "Enter now", senderAddress: "c@example.com", outcome: "new", reason: null, proposedLabelId: "Label_new" },
       { gmailMessageId: "m4", gmailThreadId: "t4", subject: "Hello", senderAddress: "d@example.com", outcome: "unmatched", reason: null, proposedLabelId: "Label_archive" },
       { gmailMessageId: "m5", gmailThreadId: "t5", subject: "VIP", senderAddress: "e@example.com", outcome: "protected", reason: null, proposedLabelId: null },
       { gmailMessageId: "m6", gmailThreadId: "t6", subject: "Blocked", senderAddress: "f@example.com", outcome: "blocked", reason: null, proposedLabelId: "Label_archive" },

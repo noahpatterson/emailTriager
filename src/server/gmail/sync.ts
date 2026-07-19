@@ -46,15 +46,15 @@ type LabelConfiguration = Readonly<{
   sourceLabelId: string;
   priorityLabelId: string;
   reviewLabelId: string;
-  contestLabelId: string;
-  contestArchiveLabelId: string;
+  newLabelId: string;
+  archiveLabelId: string;
 }>;
 
 const FORBIDDEN_LABELS = new Set(["TRASH", "SPAM", "UNREAD"]);
 const CLASSIFICATION_OUTCOMES = new Set<ClassificationOutcome>([
   "priority",
   "review",
-  "new_contest",
+  "new",
   "unmatched",
   "protected",
   "blocked",
@@ -90,8 +90,8 @@ export function remainingMessageBudget(
 export function destinationFor(outcome: ClassificationOutcome, labels: LabelConfiguration): string | null {
   if (outcome === "priority") return labels.priorityLabelId;
   if (outcome === "review") return labels.reviewLabelId;
-  if (outcome === "new_contest") return labels.contestLabelId;
-  if (outcome === "blocked" || outcome === "unmatched") return labels.contestArchiveLabelId;
+  if (outcome === "new") return labels.newLabelId;
+  if (outcome === "blocked" || outcome === "unmatched") return labels.archiveLabelId;
   return null;
 }
 
@@ -100,8 +100,8 @@ function validateLabels(labels: LabelConfiguration): void {
     labels.sourceLabelId,
     labels.priorityLabelId,
     labels.reviewLabelId,
-    labels.contestLabelId,
-    labels.contestArchiveLabelId,
+    labels.newLabelId,
+    labels.archiveLabelId,
   ];
   if (values.some((label) => !label || FORBIDDEN_LABELS.has(label.toUpperCase())) || new Set(values).size !== values.length) {
     throw new Error("Invalid label configuration");
@@ -178,8 +178,8 @@ export class MessageSyncService {
         sourceLabelId: triageConfig.sourceLabelId,
         priorityLabelId: triageConfig.priorityLabelId,
         reviewLabelId: triageConfig.reviewLabelId,
-        contestLabelId: triageConfig.contestLabelId,
-        contestArchiveLabelId: triageConfig.contestArchiveLabelId,
+        newLabelId: triageConfig.newLabelId,
+        archiveLabelId: triageConfig.archiveLabelId,
         terms: triageConfig.terms,
         senderWhitelist: triageConfig.senderWhitelist,
         senderBlocklist: triageConfig.senderBlocklist,
@@ -276,8 +276,8 @@ export class MessageSyncService {
         sourceLabelId: config.sourceLabelId,
         priorityLabelId: config.priorityLabelId,
         reviewLabelId: config.reviewLabelId,
-        contestLabelId: config.contestLabelId,
-        contestArchiveLabelId: config.contestArchiveLabelId,
+        newLabelId: config.newLabelId,
+        archiveLabelId: config.archiveLabelId,
       }, catalog);
       validateLabels(labels);
       const assertMutationAllowed = async (): Promise<void> => {
@@ -323,8 +323,8 @@ export class MessageSyncService {
                 sourceLabelId: triageConfig.sourceLabelId,
                 priorityLabelId: triageConfig.priorityLabelId,
                 reviewLabelId: triageConfig.reviewLabelId,
-                contestLabelId: triageConfig.contestLabelId,
-                contestArchiveLabelId: triageConfig.contestArchiveLabelId,
+                newLabelId: triageConfig.newLabelId,
+                archiveLabelId: triageConfig.archiveLabelId,
                 terms: triageConfig.terms,
                 senderWhitelist: triageConfig.senderWhitelist,
                 senderBlocklist: triageConfig.senderBlocklist,
@@ -512,6 +512,7 @@ export class MessageSyncService {
               gmailThreadId: parsed.threadId,
               internalDate: parsed.internalDate,
               senderAddress: parseMailboxAddress(parsed.from),
+              subject: parsed.subject,
               outcome,
               outcomeReason: reason,
             })
@@ -598,6 +599,7 @@ export class MessageSyncService {
               gmailThreadId: parsed?.threadId,
               internalDate: parsed?.internalDate,
               senderAddress: parsed ? parseMailboxAddress(parsed.from) : null,
+              subject: parsed?.subject ?? null,
               outcome: "failed",
               outcomeReason: failReason,
               errorCode: parsed ? "MESSAGE_PROCESSING_FAILED" : "MESSAGE_PARSE_FAILED",

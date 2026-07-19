@@ -1,8 +1,8 @@
 import type { GmailProvider } from "./contracts";
 import { isGmailStarred, labelIdsFromGmailMessage } from "./message";
 
-/** Trash listed contest-archive messages, skipping any that carry Gmail STARRED. */
-export async function trashListedContestArchiveMessages(
+/** Trash listed archive messages, skipping any that carry Gmail STARRED. */
+export async function trashListedArchiveMessages(
   provider: GmailProvider,
   messageIds: readonly string[],
   archiveLabelId: string,

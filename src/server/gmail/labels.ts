@@ -4,8 +4,8 @@ export type LabelRefs = Readonly<{
   sourceLabelId: string;
   priorityLabelId: string;
   reviewLabelId: string;
-  contestLabelId: string;
-  contestArchiveLabelId: string;
+  newLabelId: string;
+  archiveLabelId: string;
 }>;
 
 const FORBIDDEN_LABELS = new Set(["TRASH", "SPAM", "UNREAD"]);
@@ -45,16 +45,16 @@ export function resolveLabelRefs(refs: LabelRefs, catalog: readonly GmailLabel[]
   const source = resolveLabelRef(refs.sourceLabelId, catalog);
   const priority = resolveLabelRef(refs.priorityLabelId, catalog);
   const review = resolveLabelRef(refs.reviewLabelId, catalog);
-  const contest = resolveLabelRef(refs.contestLabelId, catalog);
-  const archive = resolveLabelRef(refs.contestArchiveLabelId, catalog);
-  const ids = [source.id, priority.id, review.id, contest.id, archive.id];
+  const newLabel = resolveLabelRef(refs.newLabelId, catalog);
+  const archive = resolveLabelRef(refs.archiveLabelId, catalog);
+  const ids = [source.id, priority.id, review.id, newLabel.id, archive.id];
   if (new Set(ids).size !== ids.length) throw new Error("Source and destination labels must be distinct");
   return {
     sourceLabelId: source.id,
     priorityLabelId: priority.id,
     reviewLabelId: review.id,
-    contestLabelId: contest.id,
-    contestArchiveLabelId: archive.id,
+    newLabelId: newLabel.id,
+    archiveLabelId: archive.id,
   };
 }
 
@@ -65,8 +65,8 @@ export function displayLabelRefs(refs: LabelRefs, catalog: readonly GmailLabel[]
     sourceLabelId: nameFor(refs.sourceLabelId),
     priorityLabelId: nameFor(refs.priorityLabelId),
     reviewLabelId: nameFor(refs.reviewLabelId),
-    contestLabelId: nameFor(refs.contestLabelId),
-    contestArchiveLabelId: nameFor(refs.contestArchiveLabelId),
+    newLabelId: nameFor(refs.newLabelId),
+    archiveLabelId: nameFor(refs.archiveLabelId),
   };
 }
 

@@ -17,8 +17,8 @@ const labels = {
   sourceLabelId: "source",
   priorityLabelId: "priority",
   reviewLabelId: "review",
-  contestLabelId: "contest",
-  contestArchiveLabelId: "archive",
+  newLabelId: "new",
+  archiveLabelId: "archive",
 };
 
 describe("trial sync bounds", () => {
@@ -45,7 +45,7 @@ describe("trial sync bounds", () => {
   test("maps outcomes to destination labels without applying mutations", () => {
     expect(destinationFor("priority", labels)).toBe("priority");
     expect(destinationFor("review", labels)).toBe("review");
-    expect(destinationFor("new_contest", labels)).toBe("contest");
+    expect(destinationFor("new", labels)).toBe("new");
     expect(destinationFor("blocked", labels)).toBe("archive");
     expect(destinationFor("unmatched", labels)).toBe("archive");
     expect(destinationFor("protected", labels)).toBeNull();

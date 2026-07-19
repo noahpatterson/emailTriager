@@ -13,7 +13,7 @@ export type RunResultRow = Readonly<{
 const outcomeLabel: Record<string, string> = {
   priority: "Priority",
   review: "Review",
-  new_contest: "New contest",
+  new: "New",
   unmatched: "Unmatched",
   protected: "Protected",
   failed: "Failed",

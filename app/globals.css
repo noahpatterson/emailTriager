@@ -146,7 +146,7 @@ footer { display:flex; justify-content:space-between; color:var(--muted); font-s
 .trial-outcome{display:inline-flex;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:#eef2ee;color:var(--ink)}
 .trial-outcome.priority{background:#ddeee4;color:#14583f}
 .trial-outcome.review{background:#fff2d8;color:#704b09}
-.trial-outcome.new_contest{background:#e4edf8;color:#1d4f7a}
+.trial-outcome.new{background:#e4edf8;color:#1d4f7a}
 .trial-outcome.protected,.trial-outcome.unmatched{background:#f1eee6;color:var(--muted)}
 .trial-outcome.blocked{background:#f3e6d8;color:#7a4a1d}
 .trial-outcome.failed{background:#fbe3df;color:var(--red)}

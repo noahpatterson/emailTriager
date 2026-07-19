@@ -4,18 +4,18 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { syncLease, triageConfig } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import type { GmailProvider } from "./contracts";
-import { CONTEST_ARCHIVE_PURGE_CONFIRM } from "./contest-archive-purge-confirm";
-import { trashListedContestArchiveMessages } from "./contest-archive-trash-messages";
+import { ARCHIVE_PURGE_CONFIRM } from "./archive-purge-confirm";
+import { trashListedArchiveMessages } from "./archive-trash-messages";
 import { resolveLabelRef } from "./labels";
 import { listBounded, type SyncBounds } from "./sync";
 
-export { CONTEST_ARCHIVE_PURGE_CONFIRM } from "./contest-archive-purge-confirm";
-export { trashListedContestArchiveMessages } from "./contest-archive-trash-messages";
+export { ARCHIVE_PURGE_CONFIRM } from "./archive-purge-confirm";
+export { trashListedArchiveMessages } from "./archive-trash-messages";
 
 const PURGE_BOUNDS: SyncBounds = { maxPages: 1, maxMessagesPerPage: 50, maxTotalMessages: 50 };
 const PURGE_LEASE_SECONDS = 300;
 
-export type ContestArchivePurgeResult = Readonly<{
+export type ArchivePurgeResult = Readonly<{
   trashedCount: number;
   skippedStarredCount: number;
   exhausted: boolean;
@@ -23,7 +23,7 @@ export type ContestArchivePurgeResult = Readonly<{
   archiveLabelName: string;
 }>;
 
-export class ContestArchivePurgeService {
+export class ArchivePurgeService {
   constructor(
     private readonly providerForOwner: (ownerId: string) => Promise<GmailProvider>,
     private readonly db: Database = database(),
@@ -32,8 +32,8 @@ export class ContestArchivePurgeService {
   async purge(
     ownerId: string,
     options: Readonly<{ confirm: string; pageToken?: string | null }> = { confirm: "" },
-  ): Promise<ContestArchivePurgeResult> {
-    if (options.confirm !== CONTEST_ARCHIVE_PURGE_CONFIRM) {
+  ): Promise<ArchivePurgeResult> {
+    if (options.confirm !== ARCHIVE_PURGE_CONFIRM) {
       throw new Error("Confirmation required");
     }
 
@@ -60,17 +60,17 @@ export class ContestArchivePurgeService {
     try {
       const [config] = await this.db
         .select({
-          contestArchiveLabelId: triageConfig.contestArchiveLabelId,
+          archiveLabelId: triageConfig.archiveLabelId,
         })
         .from(triageConfig)
         .where(eq(triageConfig.ownerAuthUserId, ownerId))
         .orderBy(desc(triageConfig.version))
         .limit(1);
-      if (!config?.contestArchiveLabelId) throw new Error("Contest archive label is not configured");
+      if (!config?.archiveLabelId) throw new Error("Archive label is not configured");
 
       const provider = await this.providerForOwner(ownerId);
       const catalog = await provider.listLabels();
-      const archive = resolveLabelRef(config.contestArchiveLabelId, catalog);
+      const archive = resolveLabelRef(config.archiveLabelId, catalog);
       const listed = await listBounded(
         provider,
         archive.id,
@@ -78,7 +78,7 @@ export class ContestArchivePurgeService {
         options.pageToken ?? undefined,
       );
 
-      const { trashedCount, skippedStarredCount } = await trashListedContestArchiveMessages(
+      const { trashedCount, skippedStarredCount } = await trashListedArchiveMessages(
         provider,
         listed.messageIds,
         archive.id,

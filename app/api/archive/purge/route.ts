@@ -1,9 +1,9 @@
 import { requireOwner } from "@/src/server/auth/owner";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import {
-  CONTEST_ARCHIVE_PURGE_CONFIRM,
-  ContestArchivePurgeService,
-} from "@/src/server/gmail/contest-archive-purge";
+  ARCHIVE_PURGE_CONFIRM,
+  ArchivePurgeService,
+} from "@/src/server/gmail/archive-purge";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
 export async function POST(request: Request): Promise<Response> {
@@ -11,13 +11,13 @@ export async function POST(request: Request): Promise<Response> {
     requireSameOrigin(request);
     const owner = await requireOwner();
     const body = await request.json() as { confirm?: unknown; pageToken?: unknown };
-    if (body.confirm !== CONTEST_ARCHIVE_PURGE_CONFIRM) {
+    if (body.confirm !== ARCHIVE_PURGE_CONFIRM) {
       return Response.json({ error: "Confirmation required" }, { status: 400 });
     }
     const pageToken = typeof body.pageToken === "string" && body.pageToken ? body.pageToken : null;
     try {
-      const result = await new ContestArchivePurgeService(googleProviderForOwner).purge(owner.userId, {
-        confirm: CONTEST_ARCHIVE_PURGE_CONFIRM,
+      const result = await new ArchivePurgeService(googleProviderForOwner).purge(owner.userId, {
+        confirm: ARCHIVE_PURGE_CONFIRM,
         pageToken,
       });
       return Response.json(result);

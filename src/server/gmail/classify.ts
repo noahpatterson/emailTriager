@@ -1,6 +1,6 @@
 import { isGmailStarred, type ParsedMessage } from "./message";
 
-export type ClassificationOutcome = "priority" | "review" | "new_contest" | "unmatched" | "protected" | "blocked";
+export type ClassificationOutcome = "priority" | "review" | "new" | "unmatched" | "protected" | "blocked";
 export type ClassificationResult = Readonly<{
   outcome: ClassificationOutcome;
   reason: string;
@@ -8,7 +8,7 @@ export type ClassificationResult = Readonly<{
 export type ClassificationTerms = Readonly<{
   priority: readonly string[];
   review: readonly string[];
-  newContest: readonly string[];
+  new: readonly string[];
 }>;
 
 const MAX_TERMS_PER_CATEGORY = 100;
@@ -88,7 +88,7 @@ export function classifyWithReason(
   const categories = [
     ["priority", "priority", terms.priority],
     ["review", "review", terms.review],
-    ["new_contest", "new contest", terms.newContest],
+    ["new", "new", terms.new],
   ] as const;
   for (const [outcome, label, configuredTerms] of categories) {
     for (const term of normalizeTerms(configuredTerms)) {

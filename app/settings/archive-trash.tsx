@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CONTEST_ARCHIVE_PURGE_CONFIRM } from "@/src/server/gmail/contest-archive-purge-confirm";
+import { ARCHIVE_PURGE_CONFIRM } from "@/src/server/gmail/archive-purge-confirm";
 
-export function ContestArchiveTrashPanel({
+export function ArchiveTrashPanel({
   gmailConnected,
   configured,
 }: {
@@ -23,13 +23,13 @@ export function ContestArchiveTrashPanel({
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch("/api/contest-archive/purge", {
+      const response = await fetch("/api/archive/purge", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "same-origin",
         redirect: "manual",
         body: JSON.stringify({
-          confirm: CONTEST_ARCHIVE_PURGE_CONFIRM,
+          confirm: ARCHIVE_PURGE_CONFIRM,
           ...(pageToken ? { pageToken } : {}),
         }),
       });
@@ -41,10 +41,10 @@ export function ContestArchiveTrashPanel({
         archiveLabelName?: string;
         error?: string;
       };
-      if (!response.ok) throw new Error(body.error || "Contest archive could not be moved to Trash.");
+      if (!response.ok) throw new Error(body.error || "Archive could not be moved to Trash.");
       const count = body.trashedCount ?? 0;
       const skipped = body.skippedStarredCount ?? 0;
-      const label = body.archiveLabelName ?? "contest-archive";
+      const label = body.archiveLabelName ?? "archive";
       setNextPageToken(body.exhausted ? null : (body.nextPageToken ?? null));
       const skipNote = skipped > 0
         ? ` Skipped ${skipped} starred message${skipped === 1 ? "" : "s"}.`
@@ -55,7 +55,7 @@ export function ContestArchiveTrashPanel({
       setStep(2);
       setUnderstood(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Contest archive could not be moved to Trash.");
+      setError(caught instanceof Error ? caught.message : "Archive could not be moved to Trash.");
     } finally {
       setPending(false);
     }
@@ -68,22 +68,22 @@ export function ContestArchiveTrashPanel({
     <div className="announcements" aria-live="polite" aria-atomic="true">
       {error && <div className="alert error" role="alert"><strong>Action needed</strong><span>{error}</span></div>}
       {notice && <div className="alert success" role="status"><strong>Update</strong><span>{notice}</span></div>}
-      {!gmailConnected && <div className="alert error" role="status"><strong>Gmail required</strong><span>Connect Gmail on the dashboard before trashing contest-archive mail.</span></div>}
+      {!gmailConnected && <div className="alert error" role="status"><strong>Gmail required</strong><span>Connect Gmail on the dashboard before trashing archive mail.</span></div>}
       {gmailConnected && !configured && (
         <div className="alert error" role="status">
           <strong>Configuration required</strong>
-          <span>Set a contest-archive label in <Link href="/configuration">Configuration</Link> first.</span>
+          <span>Set an archive label in <Link href="/configuration">Configuration</Link> first.</span>
         </div>
       )}
     </div>
 
-    <section className="history danger-card" aria-label="Contest archive trash">
+    <section className="history danger-card" aria-label="Archive trash">
       <div className="section-heading">
         <div>
           <p className="step">DANGER ZONE</p>
-          <h2>Trash contest-archive</h2>
+          <h2>Trash archive</h2>
         </div>
-        <p>Moves messages with the contest-archive label into Gmail Trash (recoverable). Starred messages are skipped. Not permanent delete.</p>
+        <p>Moves messages with the archive label into Gmail Trash (recoverable). Starred messages are skipped. Not permanent delete.</p>
       </div>
       {step === 0 && (
         <button
@@ -92,13 +92,13 @@ export function ContestArchiveTrashPanel({
           disabled={pending || !ready}
           onClick={() => { setStep(1); setUnderstood(false); setNextPageToken(null); }}
         >
-          Delete all contest-archive…
+          Delete all archive…
         </button>
       )}
       {step >= 1 && (
         <div className="danger-panel">
           <p className="field-help">
-            This moves every message currently labeled with your configured contest-archive destination to Gmail Trash,
+            This moves every message currently labeled with your configured archive destination to Gmail Trash,
             except starred messages, which are left in place. You can recover trashed messages from Trash in Gmail. Sync must not be running.
           </p>
           <label className="danger-confirm" htmlFor="purgeUnderstood">
@@ -118,7 +118,7 @@ export function ContestArchiveTrashPanel({
               disabled={pending || !understood || !ready}
               onClick={() => void purge()}
             >
-              {pending ? <><span className="spinner" aria-hidden="true" />Trashing…</> : "Confirm trash contest-archive"}
+              {pending ? <><span className="spinner" aria-hidden="true" />Trashing…</> : "Confirm trash archive"}
             </button>
             {canTrashMore && (
               <button

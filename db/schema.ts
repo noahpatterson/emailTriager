@@ -65,8 +65,8 @@ export const triageConfig = pgTable(
     sourceLabelId: text("source_label_id").notNull(),
     priorityLabelId: text("priority_label_id").notNull(),
     reviewLabelId: text("review_label_id").notNull(),
-    contestLabelId: text("contest_label_id").notNull(),
-    contestArchiveLabelId: text("contest_archive_label_id").notNull(),
+    newLabelId: text("new_label_id").notNull(),
+    archiveLabelId: text("archive_label_id").notNull(),
     terms: jsonb("terms").notNull(),
     senderWhitelist: jsonb("sender_whitelist").notNull(),
     senderBlocklist: jsonb("sender_blocklist").notNull().default([]),
@@ -124,8 +124,8 @@ export const messageProcessing = pgTable(
     gmailThreadId: text("gmail_thread_id"),
     internalDate: timestamp("internal_date", { withTimezone: true }),
     senderAddress: text("sender_address"),
-    // Retained for expand/contract rollback compatibility; new writes omit both.
     subject: text("subject"),
+    // Retained for expand/contract rollback compatibility; new writes omit labelIds.
     labelIds: jsonb("label_ids"),
     outcome: text("outcome"),
     outcomeReason: text("outcome_reason"),
@@ -136,7 +136,7 @@ export const messageProcessing = pgTable(
     primaryKey({ columns: [table.runId, table.gmailMessageId] }),
     check(
       "message_processing_outcome_check",
-      sql`${table.outcome} IN ('priority','review','new_contest','unmatched','protected','failed','blocked')`,
+      sql`${table.outcome} IN ('priority','review','new','unmatched','protected','failed','blocked')`,
     ),
   ],
 );
@@ -158,7 +158,7 @@ export const gmailMessageState = pgTable(
     primaryKey({ columns: [table.googleSubject, table.gmailMessageId] }),
     check(
       "gmail_message_state_outcome_check",
-      sql`${table.outcome} IN ('priority','review','new_contest','unmatched','protected','failed','blocked')`,
+      sql`${table.outcome} IN ('priority','review','new','unmatched','protected','failed','blocked')`,
     ),
     check(
       "gmail_message_state_processing_status_check",
