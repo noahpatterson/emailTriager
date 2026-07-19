@@ -10,7 +10,7 @@ import {
 
 describe("triage configuration validation", () => {
   test("parses comma and newline term lists", () => {
-    expect(parseTermList("urgent,  review me\nnew contest")).toEqual(["urgent", "review me", "new contest"]);
+    expect(parseTermList("urgent,  review me\nnew inquiry")).toEqual(["urgent", "review me", "new inquiry"]);
   });
 
   test("rejects duplicate or forbidden labels", () => {
@@ -18,15 +18,15 @@ describe("triage configuration validation", () => {
       sourceLabelId: "Label_1",
       priorityLabelId: "Label_1",
       reviewLabelId: "Label_2",
-      contestLabelId: "Label_3",
-      contestArchiveLabelId: "Label_4",
+      newLabelId: "Label_3",
+      archiveLabelId: "Label_4",
     })).toThrow("Invalid label configuration");
     expect(() => validateLabelIds({
       sourceLabelId: "TRASH",
       priorityLabelId: "Label_2",
       reviewLabelId: "Label_3",
-      contestLabelId: "Label_4",
-      contestArchiveLabelId: "Label_5",
+      newLabelId: "Label_4",
+      archiveLabelId: "Label_5",
     })).toThrow("Invalid label configuration");
   });
 
@@ -35,15 +35,15 @@ describe("triage configuration validation", () => {
       sourceLabelId: " Label_src ",
       priorityLabelId: "Label_pri",
       reviewLabelId: "Label_rev",
-      contestLabelId: "Label_con",
-      contestArchiveLabelId: "Label_arc",
-      terms: { priority: [" Urgent ", "urgent"], review: ["needs review"], newContest: ["New Contest"] },
+      newLabelId: "Label_new",
+      archiveLabelId: "Label_arc",
+      terms: { priority: [" Urgent ", "urgent"], review: ["needs review"], new: ["New Inquiry"] },
       senderWhitelist: ["Person <Owner@Example.com>", "owner@example.com"],
       senderBlocklist: ["Spam <Spam@Example.com>"],
       bounds: { maxPages: 2, maxMessagesPerPage: 25, maxTotalMessages: 40 },
     });
     expect(config.sourceLabelId).toBe("Label_src");
-    expect(config.contestArchiveLabelId).toBe("Label_arc");
+    expect(config.archiveLabelId).toBe("Label_arc");
     expect(config.terms.priority).toEqual(["urgent"]);
     expect(config.senderWhitelist).toEqual(["owner@example.com"]);
     expect(config.senderBlocklist).toEqual(["spam@example.com"]);

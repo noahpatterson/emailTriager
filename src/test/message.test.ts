@@ -32,7 +32,111 @@ describe("Gmail MIME parsing", () => {
     expect(parsed.bodyText).not.toContain("secret");
   });
 
+  test("excludes explicitly hidden HTML from classification text", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/html",
+        body: {
+          data: encoded(
+            '<span hidden>urgent</span><i aria-hidden="true">secret</i><b style="display: none">priority</b><p>hello</p>',
+          ),
+        },
+      },
+    });
+    expect(parsed.bodyText).toBe("hello");
+  });
+
+  test("excludes unquoted hidden style attributes from classification text", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/html",
+        body: {
+          data: encoded(
+            "<span style=display:none>urgent</span><div style=visibility:hidden>secret</div><p>hello</p>",
+          ),
+        },
+      },
+    });
+    expect(parsed.bodyText).toBe("hello");
+  });
+
+  test("counts non-text MIME parts without decoding them", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "multipart/mixed",
+        parts: [
+          {
+            mimeType: "application/octet-stream",
+            body: { data: Buffer.from([0xff, 0xfe, 0x00]).toString("base64url") },
+          },
+          { mimeType: "text/plain", body: { data: encoded("ok") } },
+        ],
+      },
+    });
+    expect(parsed.bodyText).toBe("ok");
+  });
+
   test("rejects invalid base64url", () => {
     expect(() => parseGmailMessage({ id: "m", threadId: "t", payload: { mimeType: "text/plain", body: { data: "***" } } })).toThrow("encoding");
+  });
+
+  test("honors declared charsets and decodes RFC 2047 headers", () => {
+    const latin1 = Buffer.from([0x63, 0x61, 0x66, 0xe9]).toString("base64url");
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain; charset=iso-8859-1",
+        headers: [
+          { name: "From", value: "=?ISO-8859-1?Q?Andr=E9?= <andre@example.com>" },
+          { name: "Subject", value: "=?ISO-8859-1?Q?Caf=E9?=\r\n promotion" },
+        ],
+        body: { data: latin1 },
+      },
+    });
+    expect(parsed.from).toBe("André <andre@example.com>");
+    expect(parsed.subject).toBe("Café promotion");
+    expect(parsed.bodyText).toBe("café");
+  });
+
+  test("fails closed on invalid bytes for the declared charset", () => {
+    expect(() => parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain; charset=utf-8",
+        body: { data: Buffer.from([0xc3, 0x28]).toString("base64url") },
+      },
+    })).toThrow("charset");
+  });
+
+  test("reads charset from Content-Type headers and rejects malformed encoded words", () => {
+    const parsed = parseGmailMessage({
+      id: "m",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "Content-Type", value: "text/plain; charset=iso-8859-1" },
+          { name: "From", value: "sender@example.com" },
+        ],
+        body: { data: Buffer.from([0x63, 0x61, 0x66, 0xe9]).toString("base64url") },
+      },
+    });
+    expect(parsed.bodyText).toBe("café");
+    expect(() => parseGmailMessage({
+      id: "bad",
+      threadId: "t",
+      payload: {
+        mimeType: "text/plain",
+        headers: [{ name: "Subject", value: "=?UTF-8?B?***?=" }],
+      },
+    })).toThrow("header encoding");
   });
 });

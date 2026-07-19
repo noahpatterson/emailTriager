@@ -1,5 +1,11 @@
 name: ci
-on: [push, pull_request]
+
+# Owner-only: runs on pushes to this repo and manual runs.
+# No pull_request trigger — fork/outside PRs never start CI.
+on:
+  push:
+  workflow_dispatch:
+
 jobs:
   verify:
     runs-on: ubuntu-latest

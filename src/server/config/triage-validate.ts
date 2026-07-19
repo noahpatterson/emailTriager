@@ -12,8 +12,8 @@ export type TriageConfigInput = Readonly<{
   sourceLabelId: string;
   priorityLabelId: string;
   reviewLabelId: string;
-  contestLabelId: string;
-  contestArchiveLabelId: string;
+  newLabelId: string;
+  archiveLabelId: string;
   terms: ClassificationTerms;
   senderWhitelist: readonly string[];
   senderBlocklist: readonly string[];
@@ -26,9 +26,9 @@ export const DEFAULT_TRIAGE_CONFIG: TriageConfigInput = {
   sourceLabelId: "",
   priorityLabelId: "",
   reviewLabelId: "",
-  contestLabelId: "",
-  contestArchiveLabelId: "",
-  terms: { priority: [], review: [], newContest: [] },
+  newLabelId: "",
+  archiveLabelId: "",
+  terms: { priority: [], review: [], new: [] },
   senderWhitelist: [],
   senderBlocklist: [],
   bounds: { maxPages: 3, maxMessagesPerPage: 50, maxTotalMessages: 100 },
@@ -45,15 +45,15 @@ export function validateLabelIds(labels: Readonly<{
   sourceLabelId: string;
   priorityLabelId: string;
   reviewLabelId: string;
-  contestLabelId: string;
-  contestArchiveLabelId: string;
+  newLabelId: string;
+  archiveLabelId: string;
 }>): void {
   const values = [
     labels.sourceLabelId.trim(),
     labels.priorityLabelId.trim(),
     labels.reviewLabelId.trim(),
-    labels.contestLabelId.trim(),
-    labels.contestArchiveLabelId.trim(),
+    labels.newLabelId.trim(),
+    labels.archiveLabelId.trim(),
   ];
   if (values.some((label) => !label || FORBIDDEN_LABELS.has(label.toUpperCase())) || new Set(values).size !== values.length) {
     throw new Error("Invalid label configuration");
@@ -96,12 +96,12 @@ export function normalizeTriageConfig(input: TriageConfigInput): TriageConfigInp
     sourceLabelId: input.sourceLabelId.trim(),
     priorityLabelId: input.priorityLabelId.trim(),
     reviewLabelId: input.reviewLabelId.trim(),
-    contestLabelId: input.contestLabelId.trim(),
-    contestArchiveLabelId: input.contestArchiveLabelId.trim(),
+    newLabelId: input.newLabelId.trim(),
+    archiveLabelId: input.archiveLabelId.trim(),
     terms: {
       priority: normalizeTerms(input.terms.priority),
       review: normalizeTerms(input.terms.review),
-      newContest: normalizeTerms(input.terms.newContest),
+      new: normalizeTerms(input.terms.new),
     },
     senderWhitelist: validateSenderWhitelist(input.senderWhitelist),
     senderBlocklist: validateSenderBlocklist(input.senderBlocklist),
@@ -115,12 +115,12 @@ export function asStringArray(value: unknown): string[] {
 }
 
 export function asTerms(value: unknown): ClassificationTerms {
-  if (!value || typeof value !== "object") return { priority: [], review: [], newContest: [] };
+  if (!value || typeof value !== "object") return { priority: [], review: [], new: [] };
   const record = value as Record<string, unknown>;
   return {
     priority: asStringArray(record.priority),
     review: asStringArray(record.review),
-    newContest: asStringArray(record.newContest),
+    new: asStringArray(record.new ?? record.newContest),
   };
 }
 

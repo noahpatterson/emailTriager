@@ -7,8 +7,8 @@ const labels = {
   sourceLabelId: "source",
   priorityLabelId: "priority",
   reviewLabelId: "review",
-  contestLabelId: "contest",
-  contestArchiveLabelId: "archive",
+  newLabelId: "new",
+  archiveLabelId: "archive",
 };
 
 const message = (labelIds: readonly string[]): ParsedMessage => ({
@@ -31,7 +31,7 @@ class ReconciliationFake implements GmailProvider {
       { id: "source", name: "Source" },
       { id: "priority", name: "Priority" },
       { id: "review", name: "Review" },
-      { id: "contest", name: "Contest" },
+      { id: "new", name: "New" },
       { id: "archive", name: "Archive" },
     ];
   }
@@ -58,7 +58,7 @@ describe("safe label reconciliation", () => {
     expect(fake.mutations).toEqual([{ messageId: "m1", addLabelIds: ["priority"], removeLabelIds: ["source"] }]);
   });
 
-  test("protected never mutates; unmatched and blocked move to contest-archive", async () => {
+  test("protected never mutates; unmatched and blocked move to archive", async () => {
     const fake = new ReconciliationFake({});
     await reconcileLabelMovement(fake, message(["source"]), "protected", labels);
     expect(fake.mutations).toEqual([]);
@@ -115,5 +115,25 @@ describe("safe label reconciliation", () => {
     }, 1);
     await reconcileLabelMovement(fake, message(["source"]), "priority", labels);
     expect(fake.mutations[1]).toEqual({ messageId: "m1", addLabelIds: [], removeLabelIds: ["source"] });
+  });
+
+  test("checks the current mutation fence immediately before every Gmail write", async () => {
+    const fake = new ReconciliationFake({
+      id: "m1", threadId: "t1", internalDate: "0", labelIds: ["source"],
+      payload: { headers: [{ name: "From", value: "sender@example.com" }] },
+    }, 1);
+    let checks = 0;
+    await expect(reconcileLabelMovement(
+      fake,
+      message(["source"]),
+      "priority",
+      labels,
+      async () => {
+        checks += 1;
+        if (checks === 2) throw new Error("Synchronization lease lost");
+      },
+    )).rejects.toThrow("lease lost");
+    expect(checks).toBe(2);
+    expect(fake.mutations).toHaveLength(1);
   });
 });

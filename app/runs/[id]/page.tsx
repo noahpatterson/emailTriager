@@ -6,6 +6,7 @@ import { RunResultsList } from "@/app/run-results";
 import { formatRunTime, runMessage, type RunStatus } from "@/app/run-status";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
+import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { RunDetailService } from "@/src/server/gmail/run-detail";
@@ -48,7 +49,10 @@ export default async function RunDetailPage({
     provider = undefined;
   }
 
-  const detail = await new RunDetailService().get(userId, id, provider);
+  const [detail, gmailMessageLinkRoot] = await Promise.all([
+    new RunDetailService().get(userId, id, provider),
+    new OwnerPreferencesService().getGmailMessageLinkRoot(userId),
+  ]);
   if (!detail) notFound();
 
   return <main className="shell">
@@ -60,8 +64,8 @@ export default async function RunDetailPage({
           <h1>{detail.trial ? "Trial run" : "Sync run"}</h1>
           <p className="lede">
             {detail.trial
-              ? "Proposed label changes from this dry-run. Gmail was not mutated. Blocked and unmatched propose contest-archive."
-              : "Messages processed in this bounded sync. Classified destinations plus contest-archive for blocked and unmatched were applied."}
+              ? "Proposed label changes from this dry-run. Gmail was not mutated. Blocked and unmatched propose archive."
+              : "Messages processed in this bounded sync. Classified destinations plus archive for blocked and unmatched were applied."}
           </p>
         </div>
       </div>
@@ -97,6 +101,7 @@ export default async function RunDetailPage({
         results={detail.results}
         emptyTitle="No messages in this run"
         emptyDescription="This run finished without recording any processed messages."
+        gmailMessageLinkRoot={gmailMessageLinkRoot}
       />
     </section>
   </main>;

@@ -27,4 +27,13 @@ describe("bounded Gmail listing", () => {
     await expect(provider.listMessages({ sourceLabelId: "Label_1", maxResults: 0 })).rejects.toThrow("Invalid maxResults");
     await expect(provider.listMessages({ sourceLabelId: "Label_1", maxResults: 501 })).rejects.toThrow("Invalid maxResults");
   });
+
+  test("production adapter never includes raw provider responses in errors", async () => {
+    const provider = new GoogleGmailProvider(
+      "access",
+      async () => new Response("raw-provider-secret", { status: 500 }),
+    );
+    await expect(provider.listLabels()).rejects.toThrow("Gmail request failed (500)");
+    await expect(provider.listLabels()).rejects.not.toThrow("raw-provider-secret");
+  });
 });

@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
-const { publicAppOrigin, publicAppUrl, requireSameOrigin } = await import(
+const { publicAppUrl, requireSameOrigin } = await import(
   "../server/security/request"
 );
 
@@ -38,22 +38,22 @@ describe("requireSameOrigin", () => {
   });
 });
 
-describe("publicAppOrigin", () => {
-  test("prefers Host over 0.0.0.0 request.url for redirects", () => {
-    const request = new Request("http://0.0.0.0:3000/api/oauth/google/callback?code=1", {
-      headers: { host: "localhost:3000" },
-    });
-    expect(publicAppOrigin(request)).toBe("http://localhost:3000");
-    expect(publicAppUrl(request, "/").toString()).toBe("http://localhost:3000/");
+describe("publicAppUrl", () => {
+  test("uses the configured OAuth callback origin for redirects", () => {
+    expect(
+      publicAppUrl(
+        "https://mail-triage.example/api/oauth/google/callback",
+        "/",
+      ).toString(),
+    ).toBe("https://mail-triage.example/");
   });
 
-  test("prefers Origin when present", () => {
-    const request = new Request("http://0.0.0.0:3000/", {
-      headers: {
-        host: "127.0.0.1:3000",
-        origin: "http://localhost:3000",
-      },
-    });
-    expect(publicAppOrigin(request)).toBe("http://localhost:3000");
+  test("supports the configured loopback callback used by Docker", () => {
+    expect(
+      publicAppUrl(
+        "http://localhost:3000/api/oauth/google/callback",
+        "/",
+      ).toString(),
+    ).toBe("http://localhost:3000/");
   });
 });

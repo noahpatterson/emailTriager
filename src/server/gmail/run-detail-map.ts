@@ -7,8 +7,8 @@ type LabelConfiguration = Readonly<{
   sourceLabelId: string;
   priorityLabelId: string;
   reviewLabelId: string;
-  contestLabelId: string;
-  contestArchiveLabelId: string;
+  newLabelId: string;
+  archiveLabelId: string;
 }>;
 
 type ProcessingRow = Readonly<{
@@ -20,7 +20,7 @@ type ProcessingRow = Readonly<{
   outcomeReason?: string | null;
 }>;
 
-const OUTCOMES = new Set<string>(["priority", "review", "new_contest", "unmatched", "protected", "failed", "blocked"]);
+const OUTCOMES = new Set<string>(["priority", "review", "new", "unmatched", "protected", "failed", "blocked"]);
 
 /** Null when the run is missing or belongs to another owner. */
 export function ownedRunOrNull<T extends { ownerAuthUserId: string }>(

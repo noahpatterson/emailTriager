@@ -1,6 +1,6 @@
 import { isGmailStarred, type ParsedMessage } from "./message";
 
-export type ClassificationOutcome = "priority" | "review" | "new_contest" | "unmatched" | "protected" | "blocked";
+export type ClassificationOutcome = "priority" | "review" | "new" | "unmatched" | "protected" | "blocked";
 export type ClassificationResult = Readonly<{
   outcome: ClassificationOutcome;
   reason: string;
@@ -8,7 +8,7 @@ export type ClassificationResult = Readonly<{
 export type ClassificationTerms = Readonly<{
   priority: readonly string[];
   review: readonly string[];
-  newContest: readonly string[];
+  new: readonly string[];
 }>;
 
 const MAX_TERMS_PER_CATEGORY = 100;
@@ -42,9 +42,15 @@ function termMatches(corpus: string, term: string): boolean {
 
 export function parseMailboxAddress(header: string): string | null {
   const value = header.trim();
-  const angleMatch = value.match(/<([^<>]+)>/u);
+  const withoutQuotedDisplayNames = value.replace(/"(?:\\.|[^"\\])*"/gu, "\"\"");
+  if (!value || /[:,;]/u.test(withoutQuotedDisplayNames)) return null;
+  const angleMatches = [...withoutQuotedDisplayNames.matchAll(/<([^<>]+)>/gu)];
+  if (angleMatches.length > 1) return null;
+  const angleMatch = angleMatches[0];
   const candidate = (angleMatch?.[1] ?? value).trim().normalize("NFKC").toLocaleLowerCase("und");
-  if ((value.includes("<") || value.includes(">")) && !angleMatch) return null;
+  if ((withoutQuotedDisplayNames.includes("<") || withoutQuotedDisplayNames.includes(">")) && !angleMatch) {
+    return null;
+  }
   return MAILBOX_PATTERN.test(candidate) ? candidate : null;
 }
 
@@ -84,7 +90,7 @@ export function classifyWithReason(
   const categories = [
     ["priority", "priority", terms.priority],
     ["review", "review", terms.review],
-    ["new_contest", "new contest", terms.newContest],
+    ["new", "new", terms.new],
   ] as const;
   for (const [outcome, label, configuredTerms] of categories) {
     for (const term of normalizeTerms(configuredTerms)) {

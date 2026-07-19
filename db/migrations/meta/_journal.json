@@ -50,6 +50,34 @@
       "when": 1784412000000,
       "tag": "0007_oauth_state_processing_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784415600000,
+      "tag": "0008_message_state_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784418000000,
+      "tag": "0009_gmail_message_link_root",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784419000000,
+      "tag": "0010_archive_label_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784420000000,
+      "tag": "0011_new_label_rename",
+      "breakpoints": true
     }
   ]
 }

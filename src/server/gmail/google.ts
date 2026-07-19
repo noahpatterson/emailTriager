@@ -1,17 +1,17 @@
 import type { GmailLabel, GmailPage, GmailProvider, LabelChange } from "./contracts";
+import { fetchWithRetry } from "@/src/server/http/fetch-with-retry";
 
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export class GoogleGmailProvider implements GmailProvider {
   constructor(private readonly accessToken: string, private readonly fetcher: Fetcher = fetch) {}
   private async request(path: string, init?: RequestInit): Promise<Response> {
-    const response = await this.fetcher(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+    const response = await fetchWithRetry(this.fetcher, `https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
       ...init,
       headers: { authorization: `Bearer ${this.accessToken}`, "content-type": "application/json", ...init?.headers },
     });
     if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(`Gmail request failed (${response.status}): ${detail.slice(0, 500)}`);
+      throw new Error(`Gmail request failed (${response.status})`);
     }
     return response;
   }
@@ -44,6 +44,6 @@ export class GoogleGmailProvider implements GmailProvider {
     await this.request(`messages/${encodeURIComponent(messageId)}/trash`, { method: "POST" });
   }
   async revoke(): Promise<void> {
-    await this.fetcher(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(this.accessToken)}`, { method: "POST" });
+    await fetchWithRetry(this.fetcher, `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(this.accessToken)}`, { method: "POST" });
   }
 }

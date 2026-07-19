@@ -20,7 +20,7 @@ export async function POST(request: Request): Promise<Response> {
     const pageToken = typeof body.pageToken === "string" && body.pageToken.length > 0 ? body.pageToken : null;
     const result = await new MessageSyncService(googleProviderForOwner, database()).start(owner.userId, {
       trial,
-      pageToken: trial ? pageToken : null,
+      pageToken,
     });
     return Response.json(result, { status: 202 });
   } catch {

@@ -18,10 +18,12 @@ export type DashboardRun = Readonly<{
   startedAt: string;
   finishedAt: string | null;
   errorSummary: string | null;
+  nextPageToken: string | null;
 }>;
 export type DashboardState = Readonly<{
   connected: boolean;
   configured: boolean;
+  gmailMessageLinkRoot: string;
   runs: readonly DashboardRun[];
 }>;
 export type DashboardUser = Readonly<{ name: string; email: string }>;
@@ -127,6 +129,7 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
           startedAt: now,
           finishedAt: now,
           errorSummary: null,
+          nextPageToken: result.nextPageToken,
         }, ...current.runs],
       }));
       if (result.trial) {
@@ -168,6 +171,8 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
 
   const busy = action !== "idle";
   const canTrialMore = trialMode && Boolean(trialNextPageToken) && !trialExhausted;
+  const liveNextPageToken =
+    state.runs.find((run) => !run.trial)?.nextPageToken ?? null;
 
   return <main className="shell" aria-busy={busy}>
     <header className="hero">
@@ -218,7 +223,7 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
             <h2>{trialMode ? "Trial classification" : "Classify the next batch"}</h2>
             <p>{trialMode
               ? "Trial mode classifies up to 10 messages and shows the labels that would be applied. Gmail is never mutated."
-              : "Priority, review, and new-contest terms are matched locally. A bounded run can stop before the source label is exhausted."}</p>
+              : "Priority, review, and new terms are matched locally. A bounded run can stop before the source label is exhausted."}</p>
 
             <label className="trial-toggle" htmlFor="trialMode">
               <input
@@ -268,9 +273,14 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
                   className="button"
                   type="button"
                   disabled={busy || !state.connected || !state.configured}
-                  onClick={() => void runSync({ trial: false })}
+                  onClick={() => void runSync({
+                    trial: false,
+                    pageToken: liveNextPageToken,
+                  })}
                 >
-                  {action === "syncing" ? <><span className="spinner" aria-hidden="true" />Syncing safely…</> : "Run sync"}
+                  {action === "syncing"
+                    ? <><span className="spinner" aria-hidden="true" />Syncing safely…</>
+                    : liveNextPageToken ? "Continue sync" : "Run sync"}
                 </button>
               )}
             </div>
@@ -286,12 +296,13 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
             <p className="step">TRIAL RESULTS</p>
             <h2>Proposed label changes</h2>
           </div>
-          <p>No Gmail labels are applied in trial mode. Blocked and unmatched propose contest-archive. Subjects and senders only — no message bodies.</p>
+          <p>No Gmail labels are applied in trial mode. Blocked and unmatched propose archive. Subjects and senders only — no message bodies.</p>
         </div>
         <RunResultsList
           results={trialResults}
           emptyTitle="No trial batch yet"
           emptyDescription="Run a trial to preview how the next 10 messages would be labeled."
+          gmailMessageLinkRoot={state.gmailMessageLinkRoot}
         />
       </section>
     )}
@@ -344,6 +355,6 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
       )}
     </section>
 
-    <footer><strong>Safety by design</strong><span>No Gmail search · No message bodies · Label moves + optional Trash for contest-archive</span></footer>
+    <footer><strong>Safety by design</strong><span>No Gmail search · No message bodies · Label moves + optional Trash for archive</span></footer>
   </main>;
 }

@@ -13,6 +13,7 @@ import {
   consumeOAuthState,
   releaseOAuthState,
 } from "@/src/server/oauth/state-lease";
+import { fetchWithRetry } from "@/src/server/http/fetch-with-retry";
 
 const SCOPE = "openid https://www.googleapis.com/auth/gmail.modify";
 const STATE_LIFETIME_MS = 10 * 60 * 1000;
@@ -88,7 +89,8 @@ export class GoogleConnectionService {
     let connectionPersisted = false;
     try {
       const { decryptSecret } = await import("@/src/server/security/crypto");
-      const response = await this.fetcher(
+      const response = await fetchWithRetry(
+        this.fetcher,
         "https://oauth2.googleapis.com/token",
         {
           method: "POST",
@@ -110,7 +112,8 @@ export class GoogleConnectionService {
       const tokens = (await response.json()) as GoogleTokens;
       if (!tokens.refresh_token || !tokens.access_token)
         throw new Error("Provider response incomplete");
-      const identityResponse = await this.fetcher(
+      const identityResponse = await fetchWithRetry(
+        this.fetcher,
         "https://openidconnect.googleapis.com/v1/userinfo",
         {
           headers: { authorization: `Bearer ${tokens.access_token}` },

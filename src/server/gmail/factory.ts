@@ -5,6 +5,7 @@ import { getServerConfig } from "@/src/config/server";
 import { database } from "@/src/server/db";
 import { decryptSecret } from "@/src/server/security/crypto";
 import { GoogleGmailProvider } from "./google";
+import { fetchWithRetry } from "@/src/server/http/fetch-with-retry";
 
 export async function googleProviderForOwner(ownerId: string): Promise<GoogleGmailProvider> {
   const [row] = await database()
@@ -14,7 +15,7 @@ export async function googleProviderForOwner(ownerId: string): Promise<GoogleGma
     .limit(1);
   if (!row) throw new Error("Gmail is not connected");
   const config = getServerConfig();
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await fetchWithRetry(fetch, "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

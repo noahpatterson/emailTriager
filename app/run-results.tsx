@@ -1,3 +1,5 @@
+import { DEFAULT_GMAIL_MESSAGE_LINK_ROOT } from "@/src/server/config/owner-preferences-validate";
+
 export type RunResultRow = Readonly<{
   gmailMessageId: string;
   gmailThreadId: string | null;
@@ -11,29 +13,35 @@ export type RunResultRow = Readonly<{
 const outcomeLabel: Record<string, string> = {
   priority: "Priority",
   review: "Review",
-  new_contest: "New contest",
+  new: "New",
   unmatched: "Unmatched",
   protected: "Protected",
   failed: "Failed",
   blocked: "Blocked",
 };
 
+export { DEFAULT_GMAIL_MESSAGE_LINK_ROOT };
+
 /** Open the thread in Gmail web (All Mail). Uses thread id when available. */
 export function gmailMessageUrl(
   row: Pick<RunResultRow, "gmailMessageId" | "gmailThreadId">,
+  linkRoot: string = DEFAULT_GMAIL_MESSAGE_LINK_ROOT,
 ): string {
   const id = (row.gmailThreadId || row.gmailMessageId).trim();
-  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(id)}`;
+  const root = linkRoot.endsWith("/") ? linkRoot : `${linkRoot}/`;
+  return `${root}#all/${encodeURIComponent(id)}`;
 }
 
 export function RunResultsList({
   results,
   emptyTitle,
   emptyDescription,
+  gmailMessageLinkRoot = DEFAULT_GMAIL_MESSAGE_LINK_ROOT,
 }: {
   results: readonly RunResultRow[];
   emptyTitle: string;
   emptyDescription: string;
+  gmailMessageLinkRoot?: string;
 }) {
   if (results.length === 0) {
     return (
@@ -49,7 +57,7 @@ export function RunResultsList({
     <div className="trial-list">
       {results.map((row) => {
         const title = row.subject?.trim() || "(No subject)";
-        const href = gmailMessageUrl(row);
+        const href = gmailMessageUrl(row, gmailMessageLinkRoot);
         const reason = row.reason?.trim();
         return (
           <article className="trial-row" key={row.gmailMessageId}>

@@ -12,11 +12,11 @@ type ConfigFormState = Readonly<{
   sourceLabelId: string;
   priorityLabelId: string;
   reviewLabelId: string;
-  contestLabelId: string;
-  contestArchiveLabelId: string;
+  newLabelId: string;
+  archiveLabelId: string;
   priorityTerms: string;
   reviewTerms: string;
-  newContestTerms: string;
+  newTerms: string;
   senderWhitelist: string;
   senderBlocklist: string;
   maxPages: string;
@@ -33,11 +33,11 @@ function toFormState(config: TriageConfigInput): ConfigFormState {
     sourceLabelId: config.sourceLabelId,
     priorityLabelId: config.priorityLabelId,
     reviewLabelId: config.reviewLabelId,
-    contestLabelId: config.contestLabelId,
-    contestArchiveLabelId: config.contestArchiveLabelId,
+    newLabelId: config.newLabelId,
+    archiveLabelId: config.archiveLabelId,
     priorityTerms: joinLines(config.terms.priority),
     reviewTerms: joinLines(config.terms.review),
-    newContestTerms: joinLines(config.terms.newContest),
+    newTerms: joinLines(config.terms.new),
     senderWhitelist: joinLines(config.senderWhitelist),
     senderBlocklist: joinLines(config.senderBlocklist),
     maxPages: String(config.bounds.maxPages),
@@ -51,12 +51,12 @@ function fromFormState(form: ConfigFormState): TriageConfigInput {
     sourceLabelId: form.sourceLabelId,
     priorityLabelId: form.priorityLabelId,
     reviewLabelId: form.reviewLabelId,
-    contestLabelId: form.contestLabelId,
-    contestArchiveLabelId: form.contestArchiveLabelId,
+    newLabelId: form.newLabelId,
+    archiveLabelId: form.archiveLabelId,
     terms: {
       priority: parseTermList(form.priorityTerms),
       review: parseTermList(form.reviewTerms),
-      newContest: parseTermList(form.newContestTerms),
+      new: parseTermList(form.newTerms),
     },
     senderWhitelist: parseTermList(form.senderWhitelist),
     senderBlocklist: parseTermList(form.senderBlocklist),
@@ -147,11 +147,11 @@ export function ConfigurationForm({
             <label htmlFor="reviewLabelId">Review destination
               <input id="reviewLabelId" name="reviewLabelId" value={form.reviewLabelId} onChange={(e) => updateForm("reviewLabelId", e.target.value)} autoComplete="off" required disabled={pending} placeholder="Triage/Review" />
             </label>
-            <label htmlFor="contestLabelId">New contest destination
-              <input id="contestLabelId" name="contestLabelId" value={form.contestLabelId} onChange={(e) => updateForm("contestLabelId", e.target.value)} autoComplete="off" required disabled={pending} placeholder="Triage/New contest" />
+            <label htmlFor="newLabelId">New destination
+              <input id="newLabelId" name="newLabelId" value={form.newLabelId} onChange={(e) => updateForm("newLabelId", e.target.value)} autoComplete="off" required disabled={pending} placeholder="Triage/New" />
             </label>
-            <label htmlFor="contestArchiveLabelId">Contest archive destination
-              <input id="contestArchiveLabelId" name="contestArchiveLabelId" value={form.contestArchiveLabelId} onChange={(e) => updateForm("contestArchiveLabelId", e.target.value)} autoComplete="off" required disabled={pending} placeholder="Triage/Contest archive" />
+            <label htmlFor="archiveLabelId">Archive destination
+              <input id="archiveLabelId" name="archiveLabelId" value={form.archiveLabelId} onChange={(e) => updateForm("archiveLabelId", e.target.value)} autoComplete="off" required disabled={pending} placeholder="Triage/Archive" />
             </label>
           </div>
         </fieldset>
@@ -166,8 +166,8 @@ export function ConfigurationForm({
             <label htmlFor="reviewTerms">Review terms
               <textarea id="reviewTerms" name="reviewTerms" rows={5} value={form.reviewTerms} onChange={(e) => updateForm("reviewTerms", e.target.value)} disabled={pending} placeholder={"please review\nneeds decision"} />
             </label>
-            <label htmlFor="newContestTerms">New contest terms
-              <textarea id="newContestTerms" name="newContestTerms" rows={5} value={form.newContestTerms} onChange={(e) => updateForm("newContestTerms", e.target.value)} disabled={pending} placeholder={"new contest\ncontest entry"} />
+            <label htmlFor="newTerms">New terms
+              <textarea id="newTerms" name="newTerms" rows={5} value={form.newTerms} onChange={(e) => updateForm("newTerms", e.target.value)} disabled={pending} placeholder={"new inquiry\nfirst contact"} />
             </label>
           </div>
         </fieldset>
@@ -182,7 +182,7 @@ export function ConfigurationForm({
 
         <fieldset>
           <legend>Sender blocklist</legend>
-          <p className="field-help">Exact mailbox addresses moved to contest-archive without term matching. One address per line.</p>
+          <p className="field-help">Exact mailbox addresses moved to archive without term matching. One address per line.</p>
           <label className="full-width" htmlFor="senderBlocklist">Blocked senders
             <textarea id="senderBlocklist" name="senderBlocklist" rows={4} value={form.senderBlocklist} onChange={(e) => updateForm("senderBlocklist", e.target.value)} disabled={pending} placeholder={"spam@example.com\nnoreply@promo.example"} />
           </label>

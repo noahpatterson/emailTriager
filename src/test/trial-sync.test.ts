@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { runMessage } from "../../app/run-status";
 import type { ParsedMessage } from "../server/gmail/message";
 import { DeterministicGmailFake } from "../server/gmail/fake";
-import { destinationFor, listBounded, reconcileLabelMovement } from "../server/gmail/sync";
+import {
+  destinationFor,
+  listBounded,
+  messageStateAction,
+  reconcileLabelMovement,
+  remainingMessageBudget,
+  syncStatusFor,
+} from "../server/gmail/sync";
 
 const TRIAL_BOUNDS = { maxPages: 1, maxMessagesPerPage: 10, maxTotalMessages: 10 } as const;
 
@@ -10,8 +17,8 @@ const labels = {
   sourceLabelId: "source",
   priorityLabelId: "priority",
   reviewLabelId: "review",
-  contestLabelId: "contest",
-  contestArchiveLabelId: "archive",
+  newLabelId: "new",
+  archiveLabelId: "archive",
 };
 
 describe("trial sync bounds", () => {
@@ -38,7 +45,7 @@ describe("trial sync bounds", () => {
   test("maps outcomes to destination labels without applying mutations", () => {
     expect(destinationFor("priority", labels)).toBe("priority");
     expect(destinationFor("review", labels)).toBe("review");
-    expect(destinationFor("new_contest", labels)).toBe("contest");
+    expect(destinationFor("new", labels)).toBe("new");
     expect(destinationFor("blocked", labels)).toBe("archive");
     expect(destinationFor("unmatched", labels)).toBe("archive");
     expect(destinationFor("protected", labels)).toBeNull();
@@ -64,6 +71,22 @@ describe("trial sync bounds", () => {
       addLabelIds: ["priority"],
       removeLabelIds: ["source"],
     }]);
+  });
+
+  test("reports partial failure whenever any message fails", () => {
+    expect(syncStatusFor(true, 0)).toBe("completed");
+    expect(syncStatusFor(false, 0)).toBe("bounded_incomplete");
+    expect(syncStatusFor(true, 1)).toBe("partial_failure");
+    expect(syncStatusFor(false, 1)).toBe("partial_failure");
+  });
+
+  test("recovers unresolved durable state and skips completed logical work", () => {
+    expect(messageStateAction(undefined)).toBe("process");
+    expect(messageStateAction("pending")).toBe("recover");
+    expect(messageStateAction("failed")).toBe("skip");
+    expect(messageStateAction("processed")).toBe("skip");
+    expect(remainingMessageBudget(10, 4)).toBe(6);
+    expect(remainingMessageBudget(10, 10)).toBe(0);
   });
 });
 

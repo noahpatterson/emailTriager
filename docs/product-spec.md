@@ -18,10 +18,10 @@ This document is the stable product and verification contract. Behavior not stat
 - One Gmail account connected by the owner through Google OAuth.
 - Bounded, paginated synchronization from one configured Gmail source label.
 - Local MIME parsing, normalization, matching, classification, and precedence resolution.
-- Outcomes: **priority**, **review**, **new contest**, **blocked** (sender blocklist), **unmatched**, and **protected**.
+- Outcomes: **priority**, **review**, **new**, **blocked** (sender blocklist), **unmatched**, and **protected**.
 - Each processed message stores a brief **outcome reason** (e.g. matched term, starred, whitelist, blocklist, unparseable sender) shown in run/trial review.
-- Configurable terms, sender whitelist, sender blocklist, source label, destination labels (including contest-archive), and sync bounds.
-- Owner-only, double-confirmed move of contest-archive messages to Gmail Trash (recoverable; not permanent delete).
+- Configurable terms, sender whitelist, sender blocklist, source label, destination labels (including archive), and sync bounds.
+- Owner-only, double-confirmed move of archive messages to Gmail Trash (recoverable; not permanent delete).
 - Resumable, idempotent sync runs with visible run status and failure summaries.
 - Minimal operational metadata required for configuration, OAuth, sync recovery, and auditability.
 
@@ -30,7 +30,7 @@ This document is the stable product and verification contract. Behavior not stat
 - Multiple application owners, shared inboxes, delegated Gmail access, or multiple Gmail accounts.
 - Gmail search queries or server-side content classification.
 - Automatic trash, delete, archive, spam, read/unread, send, reply, or forward actions during sync or classification.
-- Permanent delete, batch-delete, spam, or trash of labels other than the configured contest-archive via the owner trash-all control.
+- Permanent delete, batch-delete, spam, or trash of labels other than the configured archive via the owner trash-all control.
 - Machine-learning classification.
 - Full message-body storage, attachment storage, or a general-purpose email client.
 - Background monitoring beyond explicitly scheduled or owner-triggered bounded sync runs.
@@ -82,7 +82,7 @@ If a message cannot be parsed sufficiently for a successful classification, reco
 
 ## 7. Normalization and matching
 
-Configuration provides independent term sets for priority, review, and new-contest classification. On save and use:
+Configuration provides independent term sets for priority, review, and new classification. On save and use:
 
 - Unicode-normalize (NFKC), case-fold, trim, and collapse internal Unicode whitespace;
 - reject empty normalized terms, deduplicate normalized equivalents, and enforce term/count/length bounds;
@@ -99,9 +99,9 @@ The configurable whitelist and blocklist contain normalized exact mailbox addres
 
 A whitelisted sender is protected from automated movement. Classification may be computed for diagnostic counters, but the final action is `protected`, no destination label is added, and the source label is not removed. An unparseable/ambiguous sender fails conservatively with no movement rather than bypassing protection.
 
-A message whose Gmail `labelIds` include the system label `STARRED` is likewise **protected**: sync must not call `modifyLabels`, and contest-archive trash-all must not trash it. Prefer reusing the existing `protected` outcome (no distinct `starred` outcome).
+A message whose Gmail `labelIds` include the system label `STARRED` is likewise **protected**: sync must not call `modifyLabels`, and archive trash-all must not trash it. Prefer reusing the existing `protected` outcome (no distinct `starred` outcome).
 
-A blocklisted sender (not also whitelisted) yields outcome `blocked` without term matching and is moved to the contest-archive destination. **Whitelist wins over blocklist** when the same address appears in both.
+A blocklisted sender (not also whitelisted) yields outcome `blocked` without term matching and is moved to the archive destination. **Whitelist wins over blocklist** when the same address appears in both.
 
 ## 9. Deterministic classification
 
@@ -111,10 +111,10 @@ For each parseable message, choose exactly one result using this precedence:
 2. **blocked** — otherwise, exact blocklist match (skip term matching);
 3. **priority** — otherwise, one or more priority terms match;
 4. **review** — otherwise, one or more review terms match;
-5. **new contest** — otherwise, one or more new-contest terms match;
+5. **new** — otherwise, one or more new terms match;
 6. **unmatched** — no configured category matches.
 
-The result depends only on the versioned configuration snapshot and parsed message input. Store the chosen category, configuration version, Gmail message ID, and processing status. Do not store matched body excerpts. Unmatched and blocked messages are moved to the configured contest-archive label.
+The result depends only on the versioned configuration snapshot and parsed message input. Store the chosen category, configuration version, Gmail message ID, and processing status. Do not store matched body excerpts. Unmatched and blocked messages are moved to the configured archive label.
 
 ## 10. Conservative label movement
 
@@ -122,21 +122,21 @@ Movement is permitted only after parsing and classification complete successfull
 
 Destination mapping:
 
-- **priority** / **review** / **new contest** → the corresponding configured destination label;
-- **blocked** / **unmatched** → the configured contest-archive label;
+- **priority** / **review** / **new** → the corresponding configured destination label;
+- **blocked** / **unmatched** → the configured archive label;
 - **protected** / **failed** → no label mutation.
 
 Use one Gmail message label modification that adds the configured destination label ID and removes the configured source label ID. Validate at configuration/sync start that source and all four destinations exist, are distinct, and are not forbidden system-action substitutes. Sync and classification must never call trash, delete, batch-delete, spam, archive, or read/unread operations; never add/remove `TRASH`, `SPAM`, or `UNREAD` as a side effect of sync.
 
 Do not remove the source label before or separately from adding the destination label. Treat the mutation as successful only after Gmail confirms success. On an ambiguous transport result, reconcile by fetching current label IDs before retrying. Retry only the same desired final label state. If the destination is already present and source absent, record success; if destination is present and source remains, safely retry removal through the same desired-state modification. Never compensate by removing a destination label that may predate this app.
 
-### 10.1 Owner contest-archive trash-all
+### 10.1 Owner archive trash-all
 
-An explicit owner-only control may move messages that currently carry the configured contest-archive label into Gmail Trash via `users.messages.trash` (recoverable Trash, not permanent delete). Requirements:
+An explicit owner-only control may move messages that currently carry the configured archive label into Gmail Trash via `users.messages.trash` (recoverable Trash, not permanent delete). Requirements:
 
 - Owner session and same-origin/CSRF protection;
-- Double client confirmation plus a server `confirm` token (`DELETE_CONTEST_ARCHIVE`);
-- List only by the contest-archive label ID (no Gmail `q`);
+- Double client confirmation plus a server `confirm` token (`DELETE_ARCHIVE`);
+- List only by the archive label ID (no Gmail `q`);
 - Bounded batches with a resume token when incomplete;
 - Refuse while a sync lease is held;
 - Skip messages that carry Gmail `STARRED` (do not trash them); report skipped starred counts when returning purge results;
@@ -159,7 +159,7 @@ An explicit owner-only control may move messages that currently carry the config
 - Rate limits or exhaustion of retry budget persist the cursor and a resumable partial status.
 - Database failure before Gmail mutation causes no mutation. If Gmail succeeds but recording success fails, recovery reconciles Gmail labels and records the converged result.
 - Disconnect prevents new sync/mutations immediately and invalidates active lease ownership. An in-flight worker rechecks connection and lease immediately before each mutation.
-- **Rollback:** disabling the feature or disconnecting stops future actions; deployment rollback must retain compatible schema/checkpoints. The MVP does not automatically reverse prior label moves because it cannot prove a destination label was app-created. Any later reversal of destination labels must be explicit, owner-confirmed, and audit-recorded, and must never permanently delete or mark read. The contest-archive trash-all control (§10.1) is the only permitted trash path.
+- **Rollback:** disabling the feature or disconnecting stops future actions; deployment rollback must retain compatible schema/checkpoints. The MVP does not automatically reverse prior label moves because it cannot prove a destination label was app-created. Any later reversal of destination labels must be explicit, owner-confirmed, and audit-recorded, and must never permanently delete or mark read. The archive trash-all control (§10.1) is the only permitted trash path.
 
 ## 13. Data retention and disclosure
 
@@ -169,9 +169,10 @@ Persist only:
 - encrypted refresh/access material and minimal expiry/scope metadata;
 - normalized configuration and label IDs;
 - Gmail message IDs, category/status, configuration version, retry/cursor metadata, timestamps, and sanitized error codes;
+- message subjects and normalized sender addresses needed for run review UI (bounded by the same finite retention as run observations);
 - aggregate run counters.
 
-Do not persist raw/full message bodies, MIME payloads, attachment content, matched excerpts, OAuth authorization codes, PKCE verifier after callback completion, or unredacted provider responses. Avoid storing headers; if a minimal normalized sender address is operationally required, document and bound its retention.
+Do not persist raw/full message bodies, MIME payloads, attachment content, matched excerpts, OAuth authorization codes, PKCE verifier after callback completion, or unredacted provider responses. Avoid storing other headers beyond subject and a minimal normalized sender address.
 
 Define and enforce retention jobs: transient OAuth state expires within 10 minutes; access tokens are replaced/removed when obsolete; sanitized per-message/run records have a configurable finite retention period (default 30 days) and are deleted afterward, except the smallest cursor/idempotency keys required to prevent replay, which must also have a documented bounded lifecycle. Logs and telemetry use IDs/counters and error codes only. UI/API responses never disclose tokens, raw bodies, MIME, or body excerpts.
 
@@ -179,7 +180,7 @@ Define and enforce retention jobs: transient OAuth state expires within 10 minut
 
 Owner-only UI provides connection state, configuration editing, a sync trigger, current/recent run status, counts by outcome, sanitized failures, disconnect, and reconnect. It must clearly state that bounded runs may be incomplete. Non-owner and signed-out users see no owner, Gmail, configuration, or run data.
 
-**Navigation:** the account menu links to Settings (not Configuration). Settings hosts product guidance on how triage interacts with Gmail, a link into the Configuration page, and the contest-archive trash danger zone. Configuration remains a dedicated route for labels, terms, sender lists, and bounds; label fields instruct the owner to create labels in Gmail first (with a link to Google’s create-labels help).
+**Navigation:** the account menu links to Settings (not Configuration). Settings hosts product guidance on how triage interacts with Gmail, a link into the Configuration page, and the archive trash danger zone. Configuration remains a dedicated route for labels, terms, sender lists, bounds, and the Gmail message link root preference; label fields instruct the owner to create labels in Gmail first (with a link to Google’s create-labels help).
 
 Routes use explicit schemas and appropriate status codes. Sync trigger is idempotent against retries. OAuth callback redirects without secrets. UI renders no email body content for this MVP.
 
@@ -226,17 +227,17 @@ AC-1’s Neon Auth requirement applies to production and credentialed validation
 
 ### AC-5: Precedence, whitelist, and blocklist
 
-- [ ] Table-driven tests exercise every combination of priority/review/new-contest matches and prove `priority > review > new contest > unmatched` with exactly one result among term outcomes.
-- [ ] Precedence tests prove `STARRED` / invalid From / whitelist → `protected`; blocklist (after whitelist) → `blocked` skipping terms; whitelist wins when both lists contain the address; starred messages issue zero label mutations and are skipped by contest-archive trash.
+- [ ] Table-driven tests exercise every combination of priority/review/new matches and prove `priority > review > new > unmatched` with exactly one result among term outcomes.
+- [ ] Precedence tests prove `STARRED` / invalid From / whitelist → `protected`; blocklist (after whitelist) → `blocked` skipping terms; whitelist wins when both lists contain the address; starred messages issue zero label mutations and are skipped by archive trash.
 - [ ] Sender fixtures cover display names, mixed casing, multiple/ambiguous addresses, malformed headers, and spoof-like display-name text.
 - [ ] Exact whitelisted mailbox matches always yield protected/no movement even when every category matches; ambiguous/unparseable sender yields no movement.
 
 ### AC-6: Conservative Gmail mutation
 
 - [ ] Service contract tests prove modification occurs only after successful parsing/classification and consists of destination-label add plus configured source-label removal in the same modify request.
-- [ ] Tests prove `blocked` and `unmatched` mutate to contest-archive; `protected` and `failed` issue zero mutations; stale-lease, disconnected, and invalid-label cases issue zero mutations.
+- [ ] Tests prove `blocked` and `unmatched` mutate to archive; `protected` and `failed` issue zero mutations; stale-lease, disconnected, and invalid-label cases issue zero mutations.
 - [ ] Sync-path adapter tests fail if production sync code invokes permanent delete, batch-delete, spam, archive, or read/unread mutation; fixtures assert sync never changes `TRASH`, `SPAM`, or `UNREAD`.
-- [ ] Owner trash-all tests prove only `users.messages.trash` against contest-archive-listed messages (skipping `STARRED`), require confirm token and lease absence, and never permanent-delete.
+- [ ] Owner trash-all tests prove only `users.messages.trash` against archive-listed messages (skipping `STARRED`), require confirm token and lease absence, and never permanent-delete.
 - [ ] Reconciliation tests cover timeout-before-result, already-converged labels, destination-present/source-present, and retry exhaustion without removing a pre-existing destination.
 
 ### AC-7: Idempotency, concurrency, partial failure, and recovery
@@ -252,7 +253,7 @@ AC-1’s Neon Auth requirement applies to production and credentialed validation
 - [ ] Route/service tests prove disconnect immediately blocks new runs, fences an active run before its next mutation, clears local secrets even when revocation fails, and returns only sanitized status.
 - [ ] Reconnect tests prove same-subject processing resumes idempotently; different-subject connection is rejected pending reset.
 - [ ] A documented rollback drill proves an older compatible deployment can start without destructive migration, existing checkpoints remain readable, and disabling/disconnecting stops movement.
-- [ ] Tests prove rollback never automatically removes destination labels and never permanently deletes or marks messages read; trash remains limited to the explicit owner contest-archive control.
+- [ ] Tests prove rollback never automatically removes destination labels and never permanently deletes or marks messages read; trash remains limited to the explicit owner archive control.
 
 ### AC-9: Route and UI behavior
 
