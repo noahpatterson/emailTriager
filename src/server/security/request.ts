@@ -5,40 +5,10 @@ function requestHost(headers: Headers): string | null {
   return forwardedHost || headers.get("host")?.trim() || null;
 }
 
-/**
- * Browser-facing origin for redirects. Do not use `request.url` when the
- * process listens on 0.0.0.0 — that makes redirects point at http://0.0.0.0:3000.
- */
-export function publicAppOrigin(request: Request): string {
-  const originHeader = request.headers.get("origin");
-  if (originHeader) {
-    try {
-      return new URL(originHeader).origin;
-    } catch {
-      /* fall through */
-    }
-  }
-  const referer = request.headers.get("referer");
-  if (referer) {
-    try {
-      return new URL(referer).origin;
-    } catch {
-      /* fall through */
-    }
-  }
-  const host = requestHost(request.headers);
-  if (!host) throw new Error("Missing Host for public origin");
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const proto =
-    forwardedProto
-    || (host.startsWith("localhost") || host.startsWith("127.") || host.startsWith("[::1]")
-      ? "http"
-      : "https");
-  return new URL(`${proto}://${host}`).origin;
-}
-
-export function publicAppUrl(request: Request, path: string): URL {
-  return new URL(path, `${publicAppOrigin(request)}/`);
+/** Build browser redirects from the configured OAuth callback, never request headers. */
+export function publicAppUrl(googleRedirectUri: string, path: string): URL {
+  const configuredOrigin = new URL(googleRedirectUri).origin;
+  return new URL(path, `${configuredOrigin}/`);
 }
 
 /**

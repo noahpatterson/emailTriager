@@ -1,4 +1,5 @@
 import { requireOwner } from "@/src/server/auth/owner";
+import { getServerConfig } from "@/src/config/server";
 import { GoogleConnectionService } from "@/src/server/oauth/google";
 import { publicAppUrl, sanitizedErrorResponse } from "@/src/server/security/request";
 
@@ -11,7 +12,7 @@ export async function GET(request: Request): Promise<Response> {
       url.searchParams.get("code") ?? "",
       url.searchParams.get("state") ?? "",
     );
-    return Response.redirect(publicAppUrl(request, "/"));
+    return Response.redirect(publicAppUrl(getServerConfig().googleRedirectUri, "/"));
   } catch (error) {
     console.error(
       "GET /api/oauth/google/callback failed",
