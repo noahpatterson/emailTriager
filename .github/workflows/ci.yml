@@ -19,3 +19,22 @@ jobs:
       - run: bun test
       - run: bun run db:check
       - run: bun run build
+
+  # Slice 1: migrations from CI only on push/dispatch (never pull_request).
+  migrate:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.3.14 }
+      - run: bun install --frozen-lockfile
+      - name: Apply migrations
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: |
+          if [ -z "${DATABASE_URL_UNPOOLED}" ]; then
+            echo "DATABASE_URL_UNPOOLED secret not set; skipping migrate until Terraform outputs are wired."
+            exit 0
+          fi
+          bun run db:migrate

@@ -2,6 +2,16 @@
 node_modules
 .env*
 !.env.example
+!services/.env.example
 coverage
 *.tsbuildinfo
 docs/private/
+
+# Terraform (local state holds DB URLs and tokens — see D-8)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+*.tfvars
+!*.tfvars.example
+services/.env

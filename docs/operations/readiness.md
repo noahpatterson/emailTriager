@@ -3,6 +3,8 @@
 ## Deploy
 Use Bun 1.3.14 and Node 22–26. Configure `.env.example` values in the server environment; never expose unprefixed values to the browser. Apply Drizzle migrations (`bun run db:migrate`) before deployment.
 
+Public Vercel + Neon for the deployment spike is declared under [`services/`](../../services/README.md) (Terraform). Fill `services/.env` from `services/.env.example` before `terraform apply`. After deploy, `GET /api/health` must return `{"ok":true}` with no secrets. RLS `SET LOCAL` scoping is covered by `src/test/rls-session-probe.test.ts` when `TEST_DATABASE_URL` points at the Neon pooler.
+
 The application routes are live and owner-authorized. They can connect or
 disconnect Gmail, read message metadata and bodies for local classification,
 apply configured labels, and move archive-label messages to Gmail Trash after
