@@ -18,6 +18,12 @@ import {
 } from "./classify";
 import { displayLabelName, resolveLabelRefs } from "./labels";
 import { isGmailStarred, parseGmailMessage, type GmailMessage, type ParsedMessage } from "./message";
+import {
+  persistMessageSnapshotIfEligible,
+  type MessageSnapshotStore,
+} from "./message-snapshot";
+import { DatabaseMessageSnapshotStore } from "./message-snapshot-store";
+import { getServerConfig } from "@/src/config/server";
 
 export type SyncBounds = Readonly<{ maxPages: number; maxMessagesPerPage: number; maxTotalMessages: number }>;
 export type SyncResult = Readonly<{ exhausted: boolean; messageIds: readonly string[]; nextPageToken?: string }>;
@@ -165,10 +171,18 @@ export async function listBounded(provider: GmailProvider, sourceLabelId: string
 }
 
 export class MessageSyncService {
+  private readonly snapshots: MessageSnapshotStore;
+  private readonly encryptionKey: string;
+
   constructor(
     private readonly providerForOwner: (ownerId: string) => Promise<GmailProvider>,
     private readonly db: Database,
-  ) {}
+    snapshots?: MessageSnapshotStore,
+    encryptionKey?: string,
+  ) {
+    this.snapshots = snapshots ?? new DatabaseMessageSnapshotStore(db);
+    this.encryptionKey = encryptionKey ?? getServerConfig().tokenEncryptionKeyV1;
+  }
 
   async start(ownerId: string, options: SyncStartOptions = {}): Promise<SyncStartResult> {
     const trial = options.trial === true;
@@ -378,6 +392,14 @@ export class MessageSyncService {
               recoveryLabels,
               assertMutationAllowed,
             );
+            await persistMessageSnapshotIfEligible({
+              outcome: classification.outcome,
+              parsed,
+              ownerAuthUserId: ownerId,
+              runId,
+              encryptionKey: this.encryptionKey,
+              store: this.snapshots,
+            });
             await this.db
               .update(gmailMessageState)
               .set({
@@ -564,6 +586,14 @@ export class MessageSyncService {
             .update(messageProcessing)
             .set({ processedAt: sql`now()` })
             .where(and(eq(messageProcessing.runId, runId), eq(messageProcessing.gmailMessageId, parsed.id)));
+          await persistMessageSnapshotIfEligible({
+            outcome,
+            parsed,
+            ownerAuthUserId: ownerId,
+            runId,
+            encryptionKey: this.encryptionKey,
+            store: this.snapshots,
+          });
           if (!trial && durablePendingRecorded) {
             await this.db
               .update(gmailMessageState)

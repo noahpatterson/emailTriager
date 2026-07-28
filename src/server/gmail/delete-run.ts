@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
-import { messageProcessing, syncRun } from "@/db/schema";
+import { messageProcessing, messageSnapshot, syncRun } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import {
   executeDeleteRunSteps,
@@ -25,6 +25,9 @@ export class DeleteRunService {
     if (!plan) return "not_found";
 
     return executeDeleteRunSteps(plan, {
+      deleteMessageSnapshotsForRun: async (id) => {
+        await this.db.delete(messageSnapshot).where(eq(messageSnapshot.runId, id));
+      },
       deleteMessageProcessingForRun: async (id) => {
         await this.db.delete(messageProcessing).where(eq(messageProcessing.runId, id));
       },

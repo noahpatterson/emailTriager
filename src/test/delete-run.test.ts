@@ -34,6 +34,7 @@ describe("planOwnedRunDeletion", () => {
     )).toEqual({
       runId: "run-1",
       ownerId: "owner-1",
+      deleteMessageSnapshots: true,
       deleteMessageProcessing: true,
       deleteSyncRun: true,
     } satisfies DeleteRunSteps);
@@ -41,16 +42,20 @@ describe("planOwnedRunDeletion", () => {
 });
 
 describe("executeDeleteRunSteps", () => {
-  test("deletes message_processing before sync_run", async () => {
+  test("deletes message_snapshot and message_processing before sync_run", async () => {
     const order: string[] = [];
     const result = await executeDeleteRunSteps(
       {
         runId: "run-1",
         ownerId: "owner-1",
+        deleteMessageSnapshots: true,
         deleteMessageProcessing: true,
         deleteSyncRun: true,
       },
       {
+        deleteMessageSnapshotsForRun: async (runId) => {
+          order.push(`snap:${runId}`);
+        },
         deleteMessageProcessingForRun: async (runId) => {
           order.push(`mp:${runId}`);
         },
@@ -60,6 +65,6 @@ describe("executeDeleteRunSteps", () => {
       },
     );
     expect(result).toBe("deleted");
-    expect(order).toEqual(["mp:run-1", "run:run-1:owner-1"]);
+    expect(order).toEqual(["snap:run-1", "mp:run-1", "run:run-1:owner-1"]);
   });
 });

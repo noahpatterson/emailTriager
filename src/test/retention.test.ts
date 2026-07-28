@@ -15,6 +15,10 @@ describe("retention service", () => {
         calls.push({ kind: "messages", cutoff });
         return 3;
       },
+      async deleteExpiredSnapshots(cutoff: Date) {
+        calls.push({ kind: "snapshots", cutoff });
+        return 5;
+      },
       async deleteExpiredRuns(cutoff: Date) {
         calls.push({ kind: "runs", cutoff });
         return 4;
@@ -27,11 +31,13 @@ describe("retention service", () => {
     expect(result).toEqual({
       oauthStatesDeleted: 2,
       messageStatesDeleted: 3,
+      snapshotsDeleted: 5,
       runsDeleted: 4,
     });
     expect(calls).toEqual([
       { kind: "oauth", cutoff: now },
       { kind: "messages", cutoff: new Date("2026-06-18T12:00:00.000Z") },
+      { kind: "snapshots", cutoff: new Date("2026-06-18T12:00:00.000Z") },
       { kind: "runs", cutoff: new Date("2026-06-18T12:00:00.000Z") },
     ]);
   });
