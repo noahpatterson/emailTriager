@@ -172,7 +172,7 @@ export async function listBounded(provider: GmailProvider, sourceLabelId: string
 
 export class MessageSyncService {
   private readonly snapshots: MessageSnapshotStore;
-  private readonly encryptionKey: string;
+  private readonly encryptionKey: string | undefined;
 
   constructor(
     private readonly providerForOwner: (ownerId: string) => Promise<GmailProvider>,
@@ -181,7 +181,11 @@ export class MessageSyncService {
     encryptionKey?: string,
   ) {
     this.snapshots = snapshots ?? new DatabaseMessageSnapshotStore(db);
-    this.encryptionKey = encryptionKey ?? getServerConfig().tokenEncryptionKeyV1;
+    this.encryptionKey = encryptionKey;
+  }
+
+  private resolveEncryptionKey(): string {
+    return this.encryptionKey ?? getServerConfig().tokenEncryptionKeyV1;
   }
 
   async start(ownerId: string, options: SyncStartOptions = {}): Promise<SyncStartResult> {
@@ -397,7 +401,7 @@ export class MessageSyncService {
               parsed,
               ownerAuthUserId: ownerId,
               runId,
-              encryptionKey: this.encryptionKey,
+              encryptionKey: this.resolveEncryptionKey(),
               store: this.snapshots,
             });
             await this.db
@@ -591,7 +595,7 @@ export class MessageSyncService {
             parsed,
             ownerAuthUserId: ownerId,
             runId,
-            encryptionKey: this.encryptionKey,
+            encryptionKey: this.resolveEncryptionKey(),
             store: this.snapshots,
           });
           if (!trial && durablePendingRecorded) {
