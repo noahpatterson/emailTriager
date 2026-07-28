@@ -208,6 +208,7 @@ export class MessageSyncService {
       .orderBy(desc(triageConfig.version))
       .limit(1);
     if (!config) throw new Error("Sync configuration missing");
+    const encryptionKey = this.resolveEncryptionKey();
     const [connection] = await this.db
       .select({ googleSubject: gmailConnection.googleSubject })
       .from(gmailConnection)
@@ -401,10 +402,10 @@ export class MessageSyncService {
               parsed,
               ownerAuthUserId: ownerId,
               runId,
-              encryptionKey: this.resolveEncryptionKey(),
+              encryptionKey,
               store: this.snapshots,
             });
-            await this.db
+            const [finalized] = await this.db
               .update(gmailMessageState)
               .set({
                 processingStatus: "processed",
@@ -414,8 +415,11 @@ export class MessageSyncService {
               .where(and(
                 eq(gmailMessageState.googleSubject, connection.googleSubject),
                 eq(gmailMessageState.gmailMessageId, state.gmailMessageId),
+                eq(gmailMessageState.latestRunId, runId),
                 eq(gmailMessageState.processingStatus, "pending"),
-              ));
+              ))
+              .returning({ gmailMessageId: gmailMessageState.gmailMessageId });
+            if (!finalized) throw new Error("Synchronization lease lost");
             results.push({
               gmailMessageId: parsed.id,
               gmailThreadId: parsed.threadId,
@@ -586,18 +590,18 @@ export class MessageSyncService {
               assertMutationAllowed,
             );
           }
-          await this.db
-            .update(messageProcessing)
-            .set({ processedAt: sql`now()` })
-            .where(and(eq(messageProcessing.runId, runId), eq(messageProcessing.gmailMessageId, parsed.id)));
           await persistMessageSnapshotIfEligible({
             outcome,
             parsed,
             ownerAuthUserId: ownerId,
             runId,
-            encryptionKey: this.resolveEncryptionKey(),
+            encryptionKey,
             store: this.snapshots,
           });
+          await this.db
+            .update(messageProcessing)
+            .set({ processedAt: sql`now()` })
+            .where(and(eq(messageProcessing.runId, runId), eq(messageProcessing.gmailMessageId, parsed.id)));
           if (!trial && durablePendingRecorded) {
             await this.db
               .update(gmailMessageState)

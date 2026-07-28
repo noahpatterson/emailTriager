@@ -1,5 +1,5 @@
-import type { ClassificationOutcome } from "./classify";
-import type { ParsedMessage } from "./message";
+import { parseMailboxAddress, type ClassificationOutcome } from "./classify";
+import { isGmailStarred, type ParsedMessage } from "./message";
 import { encryptSecret, decryptSecret } from "@/src/server/security/crypto";
 
 /** Neutral parsed fields persisted for audit/eval. Never includes the match corpus. */
@@ -26,12 +26,18 @@ const CURRENT_KEY_VERSION = 1;
 
 /**
  * Protected mail is never snapshotted (ADR-0012). Failed rows have no reliable
- * parsed text. Match corpus is never a candidate for persistence.
+ * parsed text. Also re-check live protection signals so recovery cannot persist
+ * mail that became starred or unparseable after the original classification.
+ * Match corpus is never a candidate for persistence.
  */
 export function shouldPersistMessageSnapshot(
   outcome: ClassificationOutcome | "failed",
+  parsed: ParsedMessage,
 ): boolean {
-  return outcome !== "protected" && outcome !== "failed";
+  if (outcome === "protected" || outcome === "failed") return false;
+  if (isGmailStarred(parsed.labelIds)) return false;
+  if (!parseMailboxAddress(parsed.from)) return false;
+  return true;
 }
 
 export function messageSnapshotPlaintext(
@@ -83,7 +89,7 @@ export async function persistMessageSnapshotIfEligible(input: {
   store: MessageSnapshotStore;
   keyVersion?: number;
 }): Promise<boolean> {
-  if (!shouldPersistMessageSnapshot(input.outcome)) return false;
+  if (!shouldPersistMessageSnapshot(input.outcome, input.parsed)) return false;
   const plaintext = messageSnapshotPlaintext(input.parsed);
   await input.store.insertSnapshot({
     ownerAuthUserId: input.ownerAuthUserId,

@@ -60,19 +60,52 @@ function fixtureMessage(input: {
 }
 
 describe("message snapshot eligibility", () => {
+  const eligible = parseGmailMessage(
+    fixtureMessage({
+      id: "m-elig",
+      from: "person@example.com",
+      subject: "hi",
+      body: "body",
+    }),
+  );
   const cases = [
-    { outcome: "priority" as const, persist: true },
-    { outcome: "review" as const, persist: true },
-    { outcome: "new" as const, persist: true },
-    { outcome: "unmatched" as const, persist: true },
-    { outcome: "blocked" as const, persist: true },
-    { outcome: "protected" as const, persist: false },
-    { outcome: "failed" as const, persist: false },
+    { outcome: "priority" as const, persist: true, parsed: eligible },
+    { outcome: "review" as const, persist: true, parsed: eligible },
+    { outcome: "new" as const, persist: true, parsed: eligible },
+    { outcome: "unmatched" as const, persist: true, parsed: eligible },
+    { outcome: "blocked" as const, persist: true, parsed: eligible },
+    { outcome: "protected" as const, persist: false, parsed: eligible },
+    { outcome: "failed" as const, persist: false, parsed: eligible },
+    {
+      outcome: "priority" as const,
+      persist: false,
+      parsed: parseGmailMessage(
+        fixtureMessage({
+          id: "starred",
+          from: "person@example.com",
+          subject: "hi",
+          body: "body",
+          labelIds: ["source", "STARRED"],
+        }),
+      ),
+    },
+    {
+      outcome: "priority" as const,
+      persist: false,
+      parsed: parseGmailMessage(
+        fixtureMessage({
+          id: "bad-from",
+          from: "Not An Address",
+          subject: "hi",
+          body: "body",
+        }),
+      ),
+    },
   ];
 
-  for (const { outcome, persist } of cases) {
-    test(`${outcome} → persist=${persist}`, () => {
-      expect(shouldPersistMessageSnapshot(outcome)).toBe(persist);
+  for (const { outcome, persist, parsed } of cases) {
+    test(`${outcome} / ${parsed.id} → persist=${persist}`, () => {
+      expect(shouldPersistMessageSnapshot(outcome, parsed)).toBe(persist);
     });
   }
 });
