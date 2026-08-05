@@ -1,6 +1,6 @@
 import "server-only";
 import { desc, eq, sql } from "drizzle-orm";
-import { ownerBinding, triageConfig } from "@/db/schema";
+import { triageConfig } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import {
   asBounds,
@@ -13,6 +13,7 @@ import {
 } from "@/src/server/config/triage-validate";
 import type { GmailProvider } from "@/src/server/gmail/contracts";
 import { displayLabelRefs, resolveLabelRefs } from "@/src/server/gmail/labels";
+import { ensureOwnerBinding as writeOwnerBinding } from "@/src/server/owner-binding";
 
 export type { TriageConfigInput, TriageConfigView } from "@/src/server/config/triage-validate";
 export {
@@ -25,15 +26,7 @@ export class TriageConfigService {
   constructor(private readonly db: Database = database()) {}
 
   async ensureOwnerBinding(ownerId: string): Promise<void> {
-    const [existing] = await this.db
-      .select({ authUserId: ownerBinding.authUserId })
-      .from(ownerBinding)
-      .limit(1);
-    if (!existing) {
-      await this.db.insert(ownerBinding).values({ authUserId: ownerId });
-      return;
-    }
-    if (existing.authUserId !== ownerId) throw new Error("Owner binding mismatch");
+    await writeOwnerBinding(this.db, ownerId);
   }
 
   async getLatest(ownerId: string): Promise<TriageConfigView | null> {

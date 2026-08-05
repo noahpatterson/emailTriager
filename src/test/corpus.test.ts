@@ -109,7 +109,8 @@ describe("APP_PROFILE Gmail provider selection", () => {
     expect(usesFixtureGmailProvider("demo")).toBe(true);
     expect(usesFixtureGmailProvider("ci")).toBe(true);
     expect(usesFixtureGmailProvider("local-compose")).toBe(false);
-    expect(usesFixtureGmailProvider(undefined)).toBe(false);
+    expect(usesFixtureGmailProvider("")).toBe(false);
+    expect(usesFixtureGmailProvider("production")).toBe(false);
   });
 
   test("factory returns DeterministicGmailFake for demo without network", async () => {

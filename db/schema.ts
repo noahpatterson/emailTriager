@@ -209,3 +209,69 @@ export const messageSnapshot = pgTable(
     ),
   ],
 );
+
+export const goldenSetPartitionEnum = pgEnum("golden_set_partition", [
+  "exemplar",
+  "holdout",
+]);
+
+export const evalRunTypeEnum = pgEnum("eval_run_type", ["matching", "judge"]);
+
+/**
+ * Frozen owner-labeled message text for eval. Owns its evidence (ADR-0012);
+ * not subject to snapshot retention.
+ */
+export const goldenSetMessage = pgTable(
+  "golden_set_message",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    ownerAuthUserId: text("owner_auth_user_id")
+      .notNull()
+      .references(() => ownerBinding.authUserId),
+    /** Nullable: corpus fixtures have no live Gmail id; production labels may. */
+    sourceGmailMessageId: text("source_gmail_message_id"),
+    /** Stable fixture id when seeded from the adversarial corpus. */
+    fixtureId: text("fixture_id"),
+    fromAddress: text("from_address").notNull(),
+    subject: text("subject").notNull(),
+    bodyText: text("body_text").notNull(),
+    ownerLabel: text("owner_label").notNull(),
+    partition: goldenSetPartitionEnum("partition").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "golden_set_message_owner_label_check",
+      sql`${table.ownerLabel} IN ('priority','review','new','archive')`,
+    ),
+    unique("golden_set_message_owner_fixture_unique").on(
+      table.ownerAuthUserId,
+      table.fixtureId,
+    ),
+    index("golden_set_message_owner_partition_idx").on(
+      table.ownerAuthUserId,
+      table.partition,
+    ),
+  ],
+);
+
+/** One scoring pass over holdout for a candidate (matching terms or judge config). */
+export const evalRun = pgTable(
+  "eval_run",
+  {
+    id: uuid("id").primaryKey(),
+    ownerAuthUserId: text("owner_auth_user_id")
+      .notNull()
+      .references(() => ownerBinding.authUserId),
+    type: evalRunTypeEnum("type").notNull(),
+    /** Candidate under test — e.g. term lists for matching. */
+    candidate: jsonb("candidate").notNull(),
+    metrics: jsonb("metrics").notNull(),
+    tags: jsonb("tags").notNull().default({}),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("eval_run_owner_started_idx").on(table.ownerAuthUserId, table.startedAt.desc()),
+  ],
+);
