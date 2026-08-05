@@ -19,7 +19,7 @@ You must supply:
 | `NEON_API_KEY`         | Neon Console → Account Settings → API Keys                                                                                                        |
 | `NEON_ORG_ID`          | Neon Console → Account Settings → Organization                                                                                                    |
 | `VERCEL_API_TOKEN`     | Vercel → Account Settings → Tokens                                                                                                                |
-| `TF_VAR_allowed_cidrs` | Your public IPv4 (or CIDR). **Required.** Locks the Vercel app (pages + `/api`) via `ALLOWED_CIDRS`. Check with `curl -sS https://api.ipify.org`. |
+| `TF_VAR_allowed_cidrs` | Your public IPv4 (or CIDR). **Required.** Locks the app via Vercel Firewall + `ALLOWED_CIDRS` in `proxy.ts`. Check with `curl -sS https://api.ipify.org`. |
 
 Do not invent or scrape these. Copy `services/.env.example` → `services/.env` and fill them in.
 
@@ -35,8 +35,9 @@ Optional:
 
 ### IP lockdown notes
 
-- **Vercel inbound (pages + APIs):** enforced in `proxy.ts` when `ALLOWED_CIDRS` is set (works on Hobby). Other clients get `404`.
-- **Neon IP Allow:** Scale-plan only, and locking Neon to _your_ IP alone would **break** the deployed app — serverless functions connect from Vercel’s IPs, not yours. Leave Neon open to the network; protect it with credentials + the app allowlist. Local `db:migrate` / RLS probes from your machine still work.
+- **Vercel Firewall (edge):** `vercel_firewall_config` denies client IPs not in `TF_VAR_allowed_cidrs` (same list). This owns the project’s firewall config — if you already added the rule in the UI, import before apply: `terraform import vercel_firewall_config.spike $(terraform output -raw vercel_project_id)`.
+- **App allowlist (defense in depth):** `proxy.ts` also enforces `ALLOWED_CIDRS` and returns `404` for non-matches (works on Hobby even if Firewall UI differs).
+- **Neon IP Allow:** Scale-plan only, and locking Neon to _your_ IP alone would **break** the deployed app — serverless functions connect from Vercel’s IPs, not yours. Leave Neon open to the network; protect it with credentials + the inbound allowlist. Local `db:migrate` / RLS probes from your machine still work.
 - **GitHub Actions migrate:** uses the DB URL secret directly (not via the Vercel URL), so it is unaffected by the app allowlist.
 
 ## Apply

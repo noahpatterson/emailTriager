@@ -3,7 +3,7 @@
 ## Deploy
 Use Bun 1.3.14 and Node 22–26. Configure `.env.example` values in the server environment; never expose unprefixed values to the browser. Apply Drizzle migrations (`bun run db:migrate`) before deployment.
 
-Public Vercel + Neon for the deployment spike is declared under [`services/`](../../services/README.md) (Terraform). Fill `services/.env` from `services/.env.example` before `terraform apply` (include `TF_VAR_allowed_cidrs` with your public IP). After deploy, from an allowed IP, `GET /api/health` must return `{"ok":true}` with no secrets; other IPs get `404`. RLS `SET LOCAL` scoping is covered by `src/test/rls-session-probe.test.ts` when `TEST_DATABASE_URL` points at the Neon pooler. Do not enable Neon IP Allow for “my IP only” on this stack — Vercel serverless would lose DB access.
+Public Vercel + Neon for the deployment spike is declared under [`services/`](../../services/README.md) (Terraform). Fill `services/.env` from `services/.env.example` before `terraform apply` (include `TF_VAR_allowed_cidrs` with your public IP). Terraform also declares a Vercel Firewall custom rule that denies non-allowlisted client IPs at the edge; `proxy.ts` enforces the same list as defense in depth. After deploy, from an allowed IP, `GET /api/health` must return `{"ok":true}` with no secrets; other IPs are denied / get `404`. RLS `SET LOCAL` scoping is covered by `src/test/rls-session-probe.test.ts` when `TEST_DATABASE_URL` points at the Neon pooler. Do not enable Neon IP Allow for “my IP only” on this stack — Vercel serverless would lose DB access.
 
 The application routes are live and owner-authorized. They can connect or
 disconnect Gmail, read message metadata and bodies for local classification,

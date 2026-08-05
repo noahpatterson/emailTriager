@@ -49,7 +49,7 @@ variable "placeholder_neon_auth_cookie_secret" {
 
 variable "allowed_cidrs" {
   type        = string
-  description = "Comma-separated IPv4 addresses/CIDRs allowed to reach the Vercel app (pages + /api). Example: 203.0.113.10 or 203.0.113.0/24"
+  description = "Comma-separated IPv4 addresses/CIDRs allowed at the Vercel Firewall and via ALLOWED_CIDRS in the app. Example: 203.0.113.10 or 203.0.113.0/24"
   default     = ""
 }
 

@@ -63,3 +63,30 @@ resource "vercel_project_environment_variable" "spike" {
   target     = ["production", "preview"]
   sensitive  = true
 }
+
+# Platform Firewall: deny clients outside TF_VAR_allowed_cidrs (edge, before the app).
+# This overwrites the project's firewall config — import first if you already created
+# the rule in the UI: terraform import vercel_firewall_config.spike <project_id>
+resource "vercel_firewall_config" "spike" {
+  project_id = vercel_project.app.id
+  team_id    = var.vercel_team_id == "" ? null : var.vercel_team_id
+  enabled    = true
+
+  rules {
+    rule {
+      name        = "Allow operator IPs only"
+      description = "Deny requests whose client IP is not in TF_VAR_allowed_cidrs"
+      active      = true
+      condition_group = [{
+        conditions = [{
+          type   = "ip_address"
+          op     = "ninc"
+          values = local.allowed_cidr_list
+        }]
+      }]
+      action = {
+        action = "deny"
+      }
+    }
+  }
+}
