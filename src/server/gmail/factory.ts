@@ -4,10 +4,17 @@ import { gmailConnection } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { database } from "@/src/server/db";
 import { decryptSecret } from "@/src/server/security/crypto";
-import { GoogleGmailProvider } from "./google";
 import { fetchWithRetry } from "@/src/server/http/fetch-with-retry";
+import { usesFixtureGmailProvider } from "@/src/server/gmail/app-profile";
+import type { GmailProvider } from "@/src/server/gmail/contracts";
+import { seedGmailFakeFromCorpus } from "@/src/server/gmail/corpus-seed";
+import { GoogleGmailProvider } from "./google";
 
-export async function googleProviderForOwner(ownerId: string): Promise<GoogleGmailProvider> {
+export async function googleProviderForOwner(ownerId: string): Promise<GmailProvider> {
+  if (usesFixtureGmailProvider()) {
+    return seedGmailFakeFromCorpus();
+  }
+
   const [row] = await database()
     .select({ encryptedRefreshToken: gmailConnection.encryptedRefreshToken })
     .from(gmailConnection)

@@ -8,6 +8,7 @@ Single-owner Gmail triage console. Deterministic local rules classify mail under
 
 - Owner-only workspace (one configured identity)
 - Local rule-based triage (no LLM in the sync path)
+- Optional `APP_PROFILE=demo|ci` fixture Gmail (adversarial corpus; proves machinery, not classifier quality — see `docs/README.md`)
 - Bounded sync with run history and trial mode
 - Gmail label mutations for triage outcomes
 

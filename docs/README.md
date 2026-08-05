@@ -21,6 +21,10 @@ Everything else in it stands. The claim in the root README that there is no LLM 
 
 **[`operations/readiness.md`](./operations/readiness.md)** predates all of this.
 
+## Fixture corpus caveat
+
+The 100-message adversarial corpus (`src/server/gmail/corpus.ts`) is easier than real mail. It is constructed to exercise known matching seams and to give the demo/judge something visible to correct. It proves triage machinery, not classifier quality (ADR-0008). `APP_PROFILE=demo` or `ci` selects `DeterministicGmailFake` seeded from that corpus.
+
 ## Tracking
 
 Deferred items D-1 through D-7 are GitHub issues [#4](https://github.com/noahpatterson/emailTriager/issues/4)–[#10](https://github.com/noahpatterson/emailTriager/issues/10). D-8 is recorded in `deferred-decisions.md` but not yet ticketed.
