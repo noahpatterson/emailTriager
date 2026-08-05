@@ -4,6 +4,11 @@ import {
   assertInsecureLocalDevRequest,
   isInsecureLocalDevRequested,
 } from "@/src/server/auth/local-dev-flags";
+import {
+  clientIpFromHeaders,
+  isIpAllowed,
+  parseAllowedCidrs,
+} from "@/src/server/security/allowed-ips";
 
 /** Rewrite listen-address hostnames so Neon Auth redirects keep the browser origin. */
 function withBrowserFacingUrl(request: NextRequest): NextRequest {
@@ -26,6 +31,17 @@ function withBrowserFacingUrl(request: NextRequest): NextRequest {
   }
 }
 
+/** Spike lockdown: when ALLOWED_CIDRS is set, non-matching clients get 404 (pages + /api). */
+function enforceAllowedCidrs(request: NextRequest): NextResponse | null {
+  const allowed = parseAllowedCidrs(process.env.ALLOWED_CIDRS);
+  if (allowed.length === 0) return null;
+  const ip = clientIpFromHeaders(request.headers);
+  if (!ip || !isIpAllowed(ip, allowed)) {
+    return new NextResponse(null, { status: 404 });
+  }
+  return null;
+}
+
 export default async function proxy(request: NextRequest) {
   try {
     const driver =
@@ -45,6 +61,9 @@ export default async function proxy(request: NextRequest) {
   if (isInsecureLocalDevRequested()) {
     return NextResponse.next();
   }
+
+  const denied = enforceAllowedCidrs(request);
+  if (denied) return denied;
 
   const { pathname } = request.nextUrl;
   // App JSON APIs authorize in the route handler. Neon Auth middleware
