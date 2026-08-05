@@ -70,9 +70,8 @@ export const triageConfig = pgTable(
     terms: jsonb("terms").notNull(),
     senderWhitelist: jsonb("sender_whitelist").notNull(),
     senderBlocklist: jsonb("sender_blocklist").notNull().default([]),
-    categoryIntent: jsonb("category_intent")
-      .notNull()
-      .default({ priority: "", review: "", new: "", archive: "" }),
+    // No DB/schema default after migration backfill — writers must supply categoryIntent.
+    categoryIntent: jsonb("category_intent").notNull(),
     bounds: jsonb("bounds").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
