@@ -46,3 +46,15 @@ variable "placeholder_neon_auth_cookie_secret" {
   default     = "spike-placeholder-neon-auth-cookie-secret-32b"
   sensitive   = true
 }
+
+variable "allowed_cidrs" {
+  type        = string
+  description = "Comma-separated IPv4 addresses/CIDRs allowed to reach the Vercel app (pages + /api). Example: 203.0.113.10 or 203.0.113.0/24"
+  default     = ""
+}
+
+variable "enable_vercel_trusted_ips" {
+  type        = bool
+  description = "Also enable Vercel platform Trusted IPs (requires a plan that includes Trusted IPs). App-level ALLOWED_CIDRS still applies."
+  default     = false
+}

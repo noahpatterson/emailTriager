@@ -3,28 +3,41 @@
 Declares the **public** Neon project and Vercel app for Slice 1 ([#12](https://github.com/noahpatterson/emailTriager/issues/12)).
 This is a separate Neon project from any personal/dev project (ADR-0009) so branching never copies real message bodies.
 
-State is **local** for now (D-8). `.gitignore` already covers `*.tfstate*`, `.terraform/`, `*.tfvars`, and `services/.env`.
+State is **local** for now (D-8). `.gitignore` already covers `*.tfstate`*, `.terraform/`, `*.tfvars`, and `services/.env`.
+
+### Terraform install
+
+1. `brew tap hashicorp/tap`
+2. `brew install hashicorp/tap/terraform`
 
 ## Prerequisites before first `terraform apply`
 
 You must supply:
 
-| Variable | Source |
-|---|---|
-| `NEON_API_KEY` | Neon Console → Account Settings → API Keys |
-| `NEON_ORG_ID` | Neon Console → Account Settings → Organization |
-| `VERCEL_API_TOKEN` | Vercel → Account Settings → Tokens |
+| Variable               | Source                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEON_API_KEY`         | Neon Console → Account Settings → API Keys                                                                                                        |
+| `NEON_ORG_ID`          | Neon Console → Account Settings → Organization                                                                                                    |
+| `VERCEL_API_TOKEN`     | Vercel → Account Settings → Tokens                                                                                                                |
+| `TF_VAR_allowed_cidrs` | Your public IPv4 (or CIDR). **Required.** Locks the Vercel app (pages + `/api`) via `ALLOWED_CIDRS`. Check with `curl -sS https://api.ipify.org`. |
 
 Do not invent or scrape these. Copy `services/.env.example` → `services/.env` and fill them in.
 
 Optional:
 
-| Variable | Purpose |
-|---|---|
-| `VERCEL_TEAM_ID` | Required if the project lives on a Vercel team |
-| `GITHUB_REPO` | Defaults to `noahpatterson/emailTriager` |
-| `NEON_REGION` | Defaults to `aws-us-east-1` |
-| `VERCEL_PROJECT_NAME` | Defaults to `email-triager` |
+| Variable                                   | Purpose                                                                                                 |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `TF_VAR_enable_vercel_trusted_ips`         | `true` to also enable Vercel platform Trusted IPs (plan entitlement required; Hobby usually lacks this) |
+| `VERCEL_TEAM_ID` / `TF_VAR_vercel_team_id` | Required if the project lives on a Vercel team                                                          |
+| `GITHUB_REPO`                              | Defaults to `noahpatterson/emailTriager`                                                                |
+| `NEON_REGION`                              | Defaults to `aws-us-east-1`                                                                             |
+| `VERCEL_PROJECT_NAME`                      | Defaults to `email-triager`                                                                             |
+
+### IP lockdown notes
+
+- **Vercel inbound (pages + APIs):** enforced in `proxy.ts` when `ALLOWED_CIDRS` is set (works on Hobby). Other clients get `404`.
+- **Neon IP Allow:** Scale-plan only, and locking Neon to _your_ IP alone would **break** the deployed app — serverless functions connect from Vercel’s IPs, not yours. Leave Neon open to the network; protect it with credentials + the app allowlist. Local `db:migrate` / RLS probes from your machine still work.
+- **GitHub Actions migrate:** uses the DB URL secret directly (not via the Vercel URL), so it is unaffected by the app allowlist.
 
 ## Apply
 
