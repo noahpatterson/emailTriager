@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   DEFAULT_TRIAGE_CONFIG,
+  MAX_CATEGORY_INTENT_CHARS,
   parseTermList,
   type TriageConfigInput,
   type TriageConfigView,
@@ -19,6 +20,10 @@ type ConfigFormState = Readonly<{
   newTerms: string;
   senderWhitelist: string;
   senderBlocklist: string;
+  priorityIntent: string;
+  reviewIntent: string;
+  newIntent: string;
+  archiveIntent: string;
   maxPages: string;
   maxMessagesPerPage: string;
   maxTotalMessages: string;
@@ -40,6 +45,10 @@ function toFormState(config: TriageConfigInput): ConfigFormState {
     newTerms: joinLines(config.terms.new),
     senderWhitelist: joinLines(config.senderWhitelist),
     senderBlocklist: joinLines(config.senderBlocklist),
+    priorityIntent: config.categoryIntent.priority,
+    reviewIntent: config.categoryIntent.review,
+    newIntent: config.categoryIntent.new,
+    archiveIntent: config.categoryIntent.archive,
     maxPages: String(config.bounds.maxPages),
     maxMessagesPerPage: String(config.bounds.maxMessagesPerPage),
     maxTotalMessages: String(config.bounds.maxTotalMessages),
@@ -60,6 +69,12 @@ function fromFormState(form: ConfigFormState): TriageConfigInput {
     },
     senderWhitelist: parseTermList(form.senderWhitelist),
     senderBlocklist: parseTermList(form.senderBlocklist),
+    categoryIntent: {
+      priority: form.priorityIntent,
+      review: form.reviewIntent,
+      new: form.newIntent,
+      archive: form.archiveIntent,
+    },
     bounds: {
       maxPages: Number(form.maxPages),
       maxMessagesPerPage: Number(form.maxMessagesPerPage),
@@ -168,6 +183,28 @@ export function ConfigurationForm({
             </label>
             <label htmlFor="newTerms">New terms
               <textarea id="newTerms" name="newTerms" rows={5} value={form.newTerms} onChange={(e) => updateForm("newTerms", e.target.value)} disabled={pending} placeholder={"new inquiry\nfirst contact"} />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Category intent</legend>
+          <p className="field-help">
+            Prose describing what each category means. This is the standard of correctness for AI adjudication — not the term lists.
+            Empty is allowed when saving; all four must be filled before an audit run. Max {MAX_CATEGORY_INTENT_CHARS} characters each.
+          </p>
+          <div className="config-grid intent-grid">
+            <label htmlFor="priorityIntent">Priority intent
+              <textarea id="priorityIntent" name="priorityIntent" rows={5} maxLength={MAX_CATEGORY_INTENT_CHARS} value={form.priorityIntent} onChange={(e) => updateForm("priorityIntent", e.target.value)} disabled={pending} placeholder="Mail that needs my attention today — unpaid invoices, client escalations, time-sensitive decisions." />
+            </label>
+            <label htmlFor="reviewIntent">Review intent
+              <textarea id="reviewIntent" name="reviewIntent" rows={5} maxLength={MAX_CATEGORY_INTENT_CHARS} value={form.reviewIntent} onChange={(e) => updateForm("reviewIntent", e.target.value)} disabled={pending} placeholder="Mail that needs a decision but not urgently — proposals to weigh, drafts to approve." />
+            </label>
+            <label htmlFor="newIntent">New intent
+              <textarea id="newIntent" name="newIntent" rows={5} maxLength={MAX_CATEGORY_INTENT_CHARS} value={form.newIntent} onChange={(e) => updateForm("newIntent", e.target.value)} disabled={pending} placeholder="First-contact or unfamiliar senders worth a look before filing elsewhere." />
+            </label>
+            <label htmlFor="archiveIntent">Archive intent
+              <textarea id="archiveIntent" name="archiveIntent" rows={5} maxLength={MAX_CATEGORY_INTENT_CHARS} value={form.archiveIntent} onChange={(e) => updateForm("archiveIntent", e.target.value)} disabled={pending} placeholder="Newsletters, receipts, FYI noise, and anything I do not need to act on." />
             </label>
           </div>
         </fieldset>

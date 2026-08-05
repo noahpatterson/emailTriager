@@ -92,7 +92,7 @@ export default async function SettingsPage() {
           <p className="step">CONFIGURATION</p>
           <h2>Labels, terms, and bounds</h2>
         </div>
-        <p>Edit source and destination labels, classification terms, sender lists, sync bounds, and the Gmail message link root.</p>
+        <p>Edit source and destination labels, classification terms, category intent, sender lists, sync bounds, and the Gmail message link root.</p>
       </div>
       <p className="field-help">Create the labels in Gmail first, then enter their exact names on the configuration page.</p>
       <Link className="button secondary-ink" href="/configuration">Open configuration</Link>

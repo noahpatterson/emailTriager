@@ -4,6 +4,7 @@ import { ownerBinding, triageConfig } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import {
   asBounds,
+  asCategoryIntent,
   asStringArray,
   asTerms,
   normalizeTriageConfig,
@@ -47,6 +48,7 @@ export class TriageConfigService {
         terms: triageConfig.terms,
         senderWhitelist: triageConfig.senderWhitelist,
         senderBlocklist: triageConfig.senderBlocklist,
+        categoryIntent: triageConfig.categoryIntent,
         bounds: triageConfig.bounds,
       })
       .from(triageConfig)
@@ -64,6 +66,7 @@ export class TriageConfigService {
       terms: asTerms(row.terms),
       senderWhitelist: asStringArray(row.senderWhitelist),
       senderBlocklist: asStringArray(row.senderBlocklist),
+      categoryIntent: asCategoryIntent(row.categoryIntent),
       bounds: asBounds(row.bounds),
     };
   }
@@ -99,6 +102,7 @@ export class TriageConfigService {
       terms: normalized.terms,
       senderWhitelist: normalized.senderWhitelist,
       senderBlocklist: normalized.senderBlocklist,
+      categoryIntent: normalized.categoryIntent,
       bounds: normalized.bounds,
       createdAt: sql`now()`,
     });
