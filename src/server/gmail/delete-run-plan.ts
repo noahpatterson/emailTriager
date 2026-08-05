@@ -6,6 +6,7 @@ export type DeleteRunResult = "deleted" | "not_found";
 export type DeleteRunSteps = Readonly<{
   runId: string;
   ownerId: string;
+  deleteMessageSnapshots: true;
   deleteMessageProcessing: true;
   deleteSyncRun: true;
 }>;
@@ -21,6 +22,7 @@ export function planOwnedRunDeletion(
   return {
     runId: owned.id,
     ownerId,
+    deleteMessageSnapshots: true,
     deleteMessageProcessing: true,
     deleteSyncRun: true,
   };
@@ -29,11 +31,13 @@ export function planOwnedRunDeletion(
 export async function executeDeleteRunSteps(
   steps: DeleteRunSteps,
   ops: {
+    deleteMessageSnapshotsForRun: (runId: string) => Promise<void>;
     deleteMessageProcessingForRun: (runId: string) => Promise<void>;
     deleteSyncRunForOwner: (runId: string, ownerId: string) => Promise<void>;
   },
 ): Promise<"deleted"> {
   // Children first — required when FK is still ON DELETE NO ACTION; safe with CASCADE too.
+  await ops.deleteMessageSnapshotsForRun(steps.runId);
   await ops.deleteMessageProcessingForRun(steps.runId);
   await ops.deleteSyncRunForOwner(steps.runId, steps.ownerId);
   return "deleted";

@@ -177,3 +177,33 @@ export const oauthState = pgTable("oauth_state", {
   processingExpiresAt: timestamp("processing_expires_at", { withTimezone: true }),
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
 });
+
+/** Encrypted parsed message text for audit/eval replay. Never stores the match corpus. */
+export const messageSnapshot = pgTable(
+  "message_snapshot",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    ownerAuthUserId: text("owner_auth_user_id")
+      .notNull()
+      .references(() => ownerBinding.authUserId),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => syncRun.id, { onDelete: "cascade" }),
+    gmailMessageId: text("gmail_message_id").notNull(),
+    encryptedPayload: text("encrypted_payload").notNull(),
+    keyVersion: integer("key_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("message_snapshot_key_version_check", sql`${table.keyVersion} > 0`),
+    unique("message_snapshot_run_id_gmail_message_id_unique").on(
+      table.runId,
+      table.gmailMessageId,
+    ),
+    index("message_snapshot_created_idx").on(table.createdAt),
+    index("message_snapshot_owner_created_idx").on(
+      table.ownerAuthUserId,
+      table.createdAt,
+    ),
+  ],
+);

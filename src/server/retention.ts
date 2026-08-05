@@ -1,18 +1,20 @@
 import "server-only";
 import { lt, lte } from "drizzle-orm";
-import { gmailMessageState, oauthState, syncRun } from "@/db/schema";
+import { gmailMessageState, messageSnapshot, oauthState, syncRun } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { database, type Database } from "@/src/server/db";
 
 export type RetentionResult = Readonly<{
   oauthStatesDeleted: number;
   messageStatesDeleted: number;
+  snapshotsDeleted: number;
   runsDeleted: number;
 }>;
 
 export interface RetentionStore {
   deleteExpiredOAuthState(cutoff: Date): Promise<number>;
   deleteExpiredMessageState(cutoff: Date): Promise<number>;
+  deleteExpiredSnapshots(cutoff: Date): Promise<number>;
   deleteExpiredRuns(cutoff: Date): Promise<number>;
 }
 
@@ -32,6 +34,14 @@ class DatabaseRetentionStore implements RetentionStore {
       .delete(gmailMessageState)
       .where(lt(gmailMessageState.updatedAt, cutoff))
       .returning({ gmailMessageId: gmailMessageState.gmailMessageId });
+    return rows.length;
+  }
+
+  async deleteExpiredSnapshots(cutoff: Date): Promise<number> {
+    const rows = await this.db
+      .delete(messageSnapshot)
+      .where(lt(messageSnapshot.createdAt, cutoff))
+      .returning({ id: messageSnapshot.id });
     return rows.length;
   }
 
@@ -61,7 +71,13 @@ export class RetentionService {
     const oauthStatesDeleted = await this.store.deleteExpiredOAuthState(now);
     const messageStatesDeleted =
       await this.store.deleteExpiredMessageState(historyCutoff);
+    const snapshotsDeleted = await this.store.deleteExpiredSnapshots(historyCutoff);
     const runsDeleted = await this.store.deleteExpiredRuns(historyCutoff);
-    return { oauthStatesDeleted, messageStatesDeleted, runsDeleted };
+    return {
+      oauthStatesDeleted,
+      messageStatesDeleted,
+      snapshotsDeleted,
+      runsDeleted,
+    };
   }
 }

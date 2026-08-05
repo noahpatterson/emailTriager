@@ -78,6 +78,13 @@
       "when": 1784420000000,
       "tag": "0011_new_label_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784421000000,
+      "tag": "0012_message_snapshot",
+      "breakpoints": true
     }
   ]
 }
