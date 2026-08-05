@@ -16,15 +16,14 @@ import {
 } from "@/src/server/gmail/corpus";
 import type { ParsedMessage } from "@/src/server/gmail/message";
 
-export const MATCHING_EVAL_CATEGORIES = ["priority", "review", "new", "archive"] as const;
-export type MatchingEvalCategory = (typeof MATCHING_EVAL_CATEGORIES)[number];
+export const MATCHING_EVAL_CATEGORIES = ["priority", "review", "new", "archive"] as const satisfies readonly Category[];
 
 /**
  * Default cell costs (ownerLabel → predicted). Diagonal is 0.
  * Spec: priority loss dominates; blocked/unmatched treated as archive upstream.
  */
 export const DEFAULT_MATCHING_EVAL_COSTS: Readonly<
-  Record<MatchingEvalCategory, Readonly<Record<MatchingEvalCategory, number>>>
+  Record<Category, Readonly<Record<Category, number>>>
 > = {
   priority: { priority: 0, review: 40, new: 40, archive: 100 },
   review: { priority: 20, review: 0, new: 20, archive: 60 },
@@ -48,7 +47,7 @@ export type GoldenSetRow = Readonly<{
 }>;
 
 export type ConfusionMatrix = Readonly<
-  Record<MatchingEvalCategory, Readonly<Record<MatchingEvalCategory, number>>>
+  Record<Category, Readonly<Record<Category, number>>>
 >;
 
 export type CategoryPrecisionRecall = Readonly<{
@@ -62,14 +61,14 @@ export type MatchingEvalMetrics = Readonly<{
   scored: number;
   skipped: number;
   confusionMatrix: ConfusionMatrix;
-  perCategory: Readonly<Record<MatchingEvalCategory, CategoryPrecisionRecall>>;
+  perCategory: Readonly<Record<Category, CategoryPrecisionRecall>>;
   /** Sum of cell costs / holdout size. */
   weightedError: number;
   totalCost: number;
 }>;
 
-function emptyMatrix(): Record<MatchingEvalCategory, Record<MatchingEvalCategory, number>> {
-  const matrix = {} as Record<MatchingEvalCategory, Record<MatchingEvalCategory, number>>;
+function emptyMatrix(): Record<Category, Record<Category, number>> {
+  const matrix = {} as Record<Category, Record<Category, number>>;
   for (const actual of MATCHING_EVAL_CATEGORIES) {
     matrix[actual] = { priority: 0, review: 0, new: 0, archive: 0 };
   }
@@ -77,8 +76,8 @@ function emptyMatrix(): Record<MatchingEvalCategory, Record<MatchingEvalCategory
 }
 
 export function matchingEvalCost(
-  ownerLabel: MatchingEvalCategory,
-  predicted: MatchingEvalCategory,
+  ownerLabel: Category,
+  predicted: Category,
   costs: typeof DEFAULT_MATCHING_EVAL_COSTS = DEFAULT_MATCHING_EVAL_COSTS,
 ): number {
   return costs[ownerLabel][predicted];
@@ -124,7 +123,7 @@ function normalizeCandidateTerms(terms: ClassificationTerms): ClassificationTerm
 
 function precisionRecall(
   matrix: ConfusionMatrix,
-  category: MatchingEvalCategory,
+  category: Category,
 ): CategoryPrecisionRecall {
   const support = MATCHING_EVAL_CATEGORIES.reduce(
     (sum, predicted) => sum + matrix[category][predicted],
@@ -176,7 +175,7 @@ export function runMatchingEval(
     scored += 1;
   });
 
-  const perCategory = {} as Record<MatchingEvalCategory, CategoryPrecisionRecall>;
+  const perCategory = {} as Record<Category, CategoryPrecisionRecall>;
   for (const category of MATCHING_EVAL_CATEGORIES) {
     perCategory[category] = precisionRecall(matrix, category);
   }

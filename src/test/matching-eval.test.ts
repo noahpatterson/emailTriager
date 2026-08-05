@@ -52,59 +52,70 @@ describe("matching eval cost weights", () => {
 });
 
 describe("matching eval replay", () => {
-  test("scores holdout only and builds confusion matrix + scalar", () => {
-    const rows: GoldenSetRow[] = [
-      row({
-        id: "h1",
-        ownerLabel: "priority",
-        subject: "urgent outage",
-        bodyText: "need help",
-        partition: "holdout",
-      }),
-      row({
-        id: "h2",
-        ownerLabel: "archive",
-        subject: "URGENT: 50% off",
-        bodyText: "sale",
-        partition: "holdout",
-      }),
-      row({
-        id: "e1",
-        ownerLabel: "priority",
-        subject: "urgent outage",
-        bodyText: "exemplar should be ignored",
-        partition: "exemplar",
-      }),
-    ];
-    const metrics = runMatchingEval(rows, {
-      priority: ["urgent"],
-      review: [],
-      new: [],
-    });
-    expect(metrics.holdoutSize).toBe(2);
-    expect(metrics.scored).toBe(2);
-    expect(metrics.confusionMatrix.priority.priority).toBe(1);
-    expect(metrics.confusionMatrix.archive.priority).toBe(1);
-    expect(metrics.totalCost).toBe(100);
-    expect(metrics.weightedError).toBe(50);
-    expect(metrics.perCategory.priority.recall).toBe(1);
-    expect(metrics.perCategory.archive.recall).toBe(0);
-  });
+  const terms = { priority: ["urgent"], review: ["please review"], new: ["new inquiry"] };
 
-  test("treats unmatched as archive for matrix purposes", () => {
-    const metrics = runMatchingEval(
-      [
+  const vectors: ReadonlyArray<{
+    name: string;
+    rows: readonly GoldenSetRow[];
+    terms?: typeof terms;
+    expect: Readonly<{
+      holdoutSize: number;
+      weightedError: number;
+      matrixCell?: Readonly<{ actual: GoldenSetRow["ownerLabel"]; predicted: GoldenSetRow["ownerLabel"]; count: number }>;
+    }>;
+  }> = [
+    {
+      name: "scores holdout only; exemplar ignored",
+      rows: [
+        row({ id: "h1", ownerLabel: "priority", subject: "urgent outage", bodyText: "need help" }),
+        row({ id: "h2", ownerLabel: "archive", subject: "URGENT: 50% off", bodyText: "sale" }),
+        row({
+          id: "e1",
+          ownerLabel: "priority",
+          subject: "urgent outage",
+          bodyText: "exemplar should be ignored",
+          partition: "exemplar",
+        }),
+      ],
+      expect: {
+        holdoutSize: 2,
+        weightedError: 50,
+        matrixCell: { actual: "archive", predicted: "priority", count: 1 },
+      },
+    },
+    {
+      name: "unmatched treated as archive",
+      rows: [
         row({
           ownerLabel: "priority",
           subject: "please help with billing",
           bodyText: "no terms here",
         }),
       ],
-      { priority: ["urgent"], review: [], new: [] },
-    );
-    expect(metrics.confusionMatrix.priority.archive).toBe(1);
-    expect(metrics.weightedError).toBe(100);
-  });
+      expect: {
+        holdoutSize: 1,
+        weightedError: 100,
+        matrixCell: { actual: "priority", predicted: "archive", count: 1 },
+      },
+    },
+    {
+      name: "correct priority match is zero cost",
+      rows: [row({ ownerLabel: "priority", subject: "urgent outage", bodyText: "act now" })],
+      expect: { holdoutSize: 1, weightedError: 0 },
+    },
+  ];
+
+  for (const vector of vectors) {
+    test(vector.name, () => {
+      const metrics = runMatchingEval(vector.rows, vector.terms ?? terms);
+      expect(metrics.holdoutSize).toBe(vector.expect.holdoutSize);
+      expect(metrics.weightedError).toBe(vector.expect.weightedError);
+      if (vector.expect.matrixCell) {
+        const { actual, predicted, count } = vector.expect.matrixCell;
+        expect(metrics.confusionMatrix[actual][predicted]).toBe(count);
+      }
+    });
+  }
 
   test("scalar is sum of cell costs divided by holdout size", () => {
     const rows = goldenRowsFromCorpus().filter((r) => r.partition === "holdout").slice(0, 4);

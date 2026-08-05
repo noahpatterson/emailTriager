@@ -1,6 +1,6 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
-import { gmailConnection, oauthState, ownerBinding } from "@/db/schema";
+import { gmailConnection, oauthState } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { database, type Database } from "@/src/server/db";
 import {
@@ -14,6 +14,7 @@ import {
   releaseOAuthState,
 } from "@/src/server/oauth/state-lease";
 import { fetchWithRetry } from "@/src/server/http/fetch-with-retry";
+import { ensureOwnerBinding as writeOwnerBinding } from "@/src/server/owner-binding";
 
 const SCOPE = "openid https://www.googleapis.com/auth/gmail.modify";
 const STATE_LIFETIME_MS = 10 * 60 * 1000;
@@ -32,17 +33,7 @@ export class GoogleConnectionService {
 
   /** Ensures the singleton owner_binding row exists for this owner (FK target for gmail_connection). */
   async ensureOwnerBinding(ownerId: string): Promise<void> {
-    const [existing] = await this.db
-      .select({ authUserId: ownerBinding.authUserId })
-      .from(ownerBinding)
-      .limit(1);
-    if (!existing) {
-      await this.db.insert(ownerBinding).values({ authUserId: ownerId });
-      return;
-    }
-    if (existing.authUserId !== ownerId) {
-      throw new Error("Owner binding mismatch");
-    }
+    await writeOwnerBinding(this.db, ownerId);
   }
 
   async begin(ownerId: string): Promise<{ authorizationUrl: string }> {

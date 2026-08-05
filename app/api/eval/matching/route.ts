@@ -1,5 +1,5 @@
 import { requireOwner } from "@/src/server/auth/owner";
-import { asTerms } from "@/src/server/config/triage-validate";
+import { asBounds, asTerms } from "@/src/server/config/triage-validate";
 import { MatchingEvalService } from "@/src/server/gmail/matching-eval-service";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
@@ -13,8 +13,9 @@ export async function POST(request: Request): Promise<Response> {
     }
     const record = body as Record<string, unknown>;
     const terms = asTerms(record.terms);
+    const bounds = record.bounds === undefined ? undefined : asBounds(record.bounds);
     try {
-      const result = await new MatchingEvalService().run(owner.userId, terms);
+      const result = await new MatchingEvalService().run(owner.userId, terms, { bounds });
       return Response.json({
         id: result.id,
         type: "matching",
@@ -27,6 +28,7 @@ export async function POST(request: Request): Promise<Response> {
         message.includes("classification term")
         || message.includes("Too many")
         || message.includes("Owner binding")
+        || message.includes("Golden Set")
       ) {
         return Response.json({ error: message }, { status: 400 });
       }

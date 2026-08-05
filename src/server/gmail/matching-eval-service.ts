@@ -1,37 +1,34 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
-import { evalRun, goldenSetMessage, ownerBinding } from "@/db/schema";
+import { evalRun, goldenSetMessage } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import type { ClassificationTerms } from "@/src/server/gmail/classify";
 import { ADVERSARIAL_CORPUS } from "@/src/server/gmail/corpus";
 import {
-  goldenRowsFromCorpus,
+  corpusFixtureToGoldenRow,
   runMatchingEval,
   type GoldenSetRow,
   type MatchingEvalMetrics,
 } from "@/src/server/gmail/matching-eval";
+import type { SyncBounds } from "@/src/server/gmail/sync";
+import { ensureOwnerBinding as writeOwnerBinding } from "@/src/server/owner-binding";
+
+export type MatchingEvalCandidate = Readonly<{
+  terms: ClassificationTerms;
+  bounds?: SyncBounds;
+}>;
 
 export type MatchingEvalRunResult = Readonly<{
   id: string;
   metrics: MatchingEvalMetrics;
-  candidate: ClassificationTerms;
+  candidate: MatchingEvalCandidate;
 }>;
 
 export class MatchingEvalService {
   constructor(private readonly db: Database = database()) {}
 
   async ensureOwnerBinding(ownerId: string): Promise<void> {
-    // Singleton row: concurrent first callers must not race on insert.
-    await this.db
-      .insert(ownerBinding)
-      .values({ authUserId: ownerId })
-      .onConflictDoNothing({ target: ownerBinding.singleton });
-    const [existing] = await this.db
-      .select({ authUserId: ownerBinding.authUserId })
-      .from(ownerBinding)
-      .limit(1);
-    if (!existing) throw new Error("Owner binding missing after insert");
-    if (existing.authUserId !== ownerId) throw new Error("Owner binding mismatch");
+    await writeOwnerBinding(this.db, ownerId);
   }
 
   /** Idempotently seed adversarial corpus fixtures into the owner's Golden Set. */
@@ -39,17 +36,19 @@ export class MatchingEvalService {
     await this.ensureOwnerBinding(ownerId);
     let inserted = 0;
     for (const fixture of ADVERSARIAL_CORPUS) {
+      const row = corpusFixtureToGoldenRow(fixture);
       const result = await this.db
         .insert(goldenSetMessage)
         .values({
           ownerAuthUserId: ownerId,
           fixtureId: fixture.id,
-          sourceGmailMessageId: fixture.id,
-          fromAddress: fixture.from,
-          subject: fixture.subject,
-          bodyText: fixture.body,
-          ownerLabel: fixture.ownerLabel,
-          partition: fixture.partition,
+          // Fixtures have no live Gmail id (schema: nullable for fixtures).
+          sourceGmailMessageId: null,
+          fromAddress: row.from,
+          subject: row.subject,
+          bodyText: row.bodyText,
+          ownerLabel: row.ownerLabel,
+          partition: row.partition,
         })
         .onConflictDoNothing({
           target: [goldenSetMessage.ownerAuthUserId, goldenSetMessage.fixtureId],
@@ -94,19 +93,22 @@ export class MatchingEvalService {
   async run(
     ownerId: string,
     candidateTerms: ClassificationTerms,
-    options: Readonly<{ tags?: Record<string, unknown> }> = {},
+    options: Readonly<{ tags?: Record<string, unknown>; bounds?: SyncBounds }> = {},
   ): Promise<MatchingEvalRunResult> {
     await this.ensureCorpusGoldenSet(ownerId);
-    let holdout = await this.listHoldout(ownerId);
+    const holdout = await this.listHoldout(ownerId);
     if (holdout.length === 0) {
-      holdout = goldenRowsFromCorpus().filter((row) => row.partition === "holdout");
+      throw new Error("Golden Set Holdout is empty after corpus seed");
     }
     const metrics = runMatchingEval(holdout, candidateTerms, { holdoutOnly: false });
     const id = crypto.randomUUID();
-    const candidate = {
-      priority: [...candidateTerms.priority],
-      review: [...candidateTerms.review],
-      new: [...candidateTerms.new],
+    const candidate: MatchingEvalCandidate = {
+      terms: {
+        priority: [...candidateTerms.priority],
+        review: [...candidateTerms.review],
+        new: [...candidateTerms.new],
+      },
+      ...(options.bounds ? { bounds: options.bounds } : {}),
     };
     await this.db.insert(evalRun).values({
       id,
