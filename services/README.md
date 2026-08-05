@@ -65,3 +65,4 @@ Point CI secret `DATABASE_URL_UNPOOLED` at the Terraform output of the same name
 
 1. Hit `GET /api/health` on the Vercel deployment — expect `{"ok":true}`.
 2. With a pooled connection string: `TEST_DATABASE_URL=<pooled> bun test src/test/rls-session-probe.test.ts`
+   (The Terraform owner role has `BYPASSRLS`; the probe creates a temporary `NOBYPASSRLS` role so policies actually fire.)

@@ -41,12 +41,18 @@ async function withClient<T>(
  * Executable R-1 probe: on one pooled connection, `SET LOCAL` for owner A then
  * owner B must not cross-read policy-gated rows, and the GUC must clear after COMMIT.
  * Also proves bare `SET` (is_local=false) leaks across COMMIT on the same connection.
+ *
+ * Neon project owner roles inherit `neon_superuser` → `BYPASSRLS`, so policies never
+ * fire on the Terraform `DATABASE_URL` role. The probe seeds as that role, then
+ * `SET ROLE` to a temporary SQL-created `NOBYPASSRLS` role for the isolation asserts.
  */
 export async function probeSetLocalOwnerScoping(
   connectionString: string,
 ): Promise<SetLocalProbeResult> {
   return withClient(connectionString, async (client) => {
-    const table = `rls_probe_${randomUUID().replaceAll("-", "")}`;
+    const suffix = randomUUID().replaceAll("-", "");
+    const table = `rls_probe_${suffix}`;
+    const probeRole = `rls_probe_role_${suffix.slice(0, 12)}`;
 
     try {
       await client.query(`
@@ -61,6 +67,7 @@ export async function probeSetLocalOwnerScoping(
         CREATE POLICY owner_isolation ON ${table}
         USING (owner_id = current_setting('app.current_owner', true))
       `);
+      // Seed while still BYPASSRLS (Neon owner); inserts would otherwise need the GUC.
       await client.query(
         `INSERT INTO ${table} (owner_id, payload) VALUES ($1, $2)`,
         ["A", "a-only"],
@@ -69,6 +76,13 @@ export async function probeSetLocalOwnerScoping(
         `INSERT INTO ${table} (owner_id, payload) VALUES ($1, $2)`,
         ["B", "b-only"],
       );
+
+      // SQL-created roles do not inherit neon_superuser / BYPASSRLS.
+      await client.query(`CREATE ROLE ${probeRole} NOBYPASSRLS`);
+      await client.query(`GRANT ${probeRole} TO CURRENT_USER`);
+      await client.query(`GRANT USAGE ON SCHEMA public TO ${probeRole}`);
+      await client.query(`GRANT SELECT ON ${table} TO ${probeRole}`);
+      await client.query(`SET ROLE ${probeRole}`);
 
       await client.query("BEGIN");
       await client.query("SELECT set_config('app.current_owner', $1, true)", ["A"]);
@@ -87,6 +101,8 @@ export async function probeSetLocalOwnerScoping(
         `SELECT payload FROM ${table} ORDER BY payload`,
       );
       await client.query("COMMIT");
+
+      await client.query("RESET ROLE");
 
       // Control case: bare SET (is_local=false) must leak past COMMIT — forbidden in app code.
       await client.query("BEGIN");
@@ -107,7 +123,17 @@ export async function probeSetLocalOwnerScoping(
       };
     } finally {
       try {
+        await client.query("RESET ROLE");
+      } catch {
+        // best-effort
+      }
+      try {
         await client.query(`DROP TABLE IF EXISTS ${table}`);
+      } catch {
+        // best-effort cleanup
+      }
+      try {
+        await client.query(`DROP ROLE IF EXISTS ${probeRole}`);
       } catch {
         // best-effort cleanup
       }
