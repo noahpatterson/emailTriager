@@ -275,3 +275,94 @@ export const evalRun = pgTable(
     index("eval_run_owner_started_idx").on(table.ownerAuthUserId, table.startedAt.desc()),
   ],
 );
+
+export const auditStatusEnum = pgEnum("audit_status", [
+  "running",
+  "bounded_incomplete",
+  "completed",
+  "partial_failure",
+  "failed",
+]);
+
+/** Append-only prompt text versions for judge runs (ADR-0007). */
+export const promptVersion = pgTable(
+  "prompt_version",
+  {
+    id: text("id").primaryKey(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/**
+ * Post-sync shadow adjudication over Message Snapshots.
+ * Reuses sync_lease for mutual exclusion with sync/purge; never mutates Gmail in Slice 4.
+ */
+export const auditRun = pgTable(
+  "audit_run",
+  {
+    id: uuid("id").primaryKey(),
+    ownerAuthUserId: text("owner_auth_user_id")
+      .notNull()
+      .references(() => ownerBinding.authUserId),
+    syncRunId: uuid("sync_run_id")
+      .notNull()
+      .references(() => syncRun.id, { onDelete: "cascade" }),
+    status: auditStatusEnum("status").notNull(),
+    promptVersionId: text("prompt_version_id")
+      .notNull()
+      .references(() => promptVersion.id),
+    modelProvider: text("model_provider").notNull(),
+    modelName: text("model_name").notNull(),
+    /** Exclusive cursor: gmail message ids already judged or skipped in this run. */
+    processedCount: integer("processed_count").notNull().default(0),
+    totalEligible: integer("total_eligible").notNull().default(0),
+    nextCursor: text("next_cursor"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    fenceToken: bigint("fence_token", { mode: "number" }).notNull().default(0),
+    errorSummary: text("error_summary"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("audit_run_owner_started_idx").on(table.ownerAuthUserId, table.startedAt.desc()),
+    index("audit_run_sync_run_idx").on(table.syncRunId),
+  ],
+);
+
+export const verdict = pgTable(
+  "verdict",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    auditRunId: uuid("audit_run_id")
+      .notNull()
+      .references(() => auditRun.id, { onDelete: "cascade" }),
+    gmailMessageId: text("gmail_message_id").notNull(),
+    agreesWithFiling: boolean("agrees_with_filing"),
+    recommendedCategory: text("recommended_category"),
+    rationale: text("rationale"),
+    malformed: boolean("malformed").notNull().default(false),
+    modelName: text("model_name").notNull(),
+    modelProvider: text("model_provider").notNull(),
+    promptVersionId: text("prompt_version_id")
+      .notNull()
+      .references(() => promptVersion.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("verdict_audit_run_id_gmail_message_id_unique").on(
+      table.auditRunId,
+      table.gmailMessageId,
+    ),
+    check(
+      "verdict_recommended_category_check",
+      sql`${table.recommendedCategory} IS NULL OR ${table.recommendedCategory} IN ('priority','review','new','archive')`,
+    ),
+    check(
+      "verdict_rationale_length_check",
+      sql`${table.rationale} IS NULL OR char_length(${table.rationale}) <= 500`,
+    ),
+    index("verdict_audit_run_idx").on(table.auditRunId),
+  ],
+);
