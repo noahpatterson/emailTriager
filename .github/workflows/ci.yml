@@ -18,7 +18,20 @@ jobs:
       - run: bun run lint
       - run: bun test
       - run: bun run db:check
-      - run: bun run build
+      # Same compile-time placeholders as Dockerfile builder (not real secrets).
+      # /api/auth/[...path] evaluates getNeonAuth() → getServerConfig() at build.
+      - name: Build
+        env:
+          DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
+          DATABASE_DRIVER: neon-http
+          NEON_AUTH_BASE_URL: https://build.invalid
+          NEON_AUTH_COOKIE_SECRET: build-cookie-secret-at-least-32-chars!!
+          OWNER_NEON_AUTH_USER_ID: build-owner
+          GOOGLE_CLIENT_ID: build-client-id
+          GOOGLE_CLIENT_SECRET: build-only-not-a-secret
+          GOOGLE_REDIRECT_URI: http://localhost:3000/api/oauth/google/callback
+          TOKEN_ENCRYPTION_KEY_V1: build-only-dummy-token-key-not-secret
+        run: bun run build
 
   # Slice 1: migrations from CI only on push/dispatch (never pull_request).
   migrate:
