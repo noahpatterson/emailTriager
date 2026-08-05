@@ -21,14 +21,16 @@ export class MatchingEvalService {
   constructor(private readonly db: Database = database()) {}
 
   async ensureOwnerBinding(ownerId: string): Promise<void> {
+    // Singleton row: concurrent first callers must not race on insert.
+    await this.db
+      .insert(ownerBinding)
+      .values({ authUserId: ownerId })
+      .onConflictDoNothing({ target: ownerBinding.singleton });
     const [existing] = await this.db
       .select({ authUserId: ownerBinding.authUserId })
       .from(ownerBinding)
       .limit(1);
-    if (!existing) {
-      await this.db.insert(ownerBinding).values({ authUserId: ownerId });
-      return;
-    }
+    if (!existing) throw new Error("Owner binding missing after insert");
     if (existing.authUserId !== ownerId) throw new Error("Owner binding mismatch");
   }
 
