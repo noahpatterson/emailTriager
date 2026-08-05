@@ -7,6 +7,17 @@ import type { SyncBounds } from "@/src/server/gmail/sync";
 
 const FORBIDDEN_LABELS = new Set(["TRASH", "SPAM", "UNREAD"]);
 const MAX_SENDER_LIST = 200;
+export const MAX_CATEGORY_INTENT_CHARS = 2000;
+
+export const CATEGORY_INTENT_KEYS = ["priority", "review", "new", "archive"] as const;
+export type CategoryIntentKey = (typeof CATEGORY_INTENT_KEYS)[number];
+
+export type CategoryIntent = Readonly<{
+  priority: string;
+  review: string;
+  new: string;
+  archive: string;
+}>;
 
 export type TriageConfigInput = Readonly<{
   sourceLabelId: string;
@@ -17,10 +28,18 @@ export type TriageConfigInput = Readonly<{
   terms: ClassificationTerms;
   senderWhitelist: readonly string[];
   senderBlocklist: readonly string[];
+  categoryIntent: CategoryIntent;
   bounds: SyncBounds;
 }>;
 
 export type TriageConfigView = TriageConfigInput & Readonly<{ version: number }>;
+
+export const EMPTY_CATEGORY_INTENT: CategoryIntent = {
+  priority: "",
+  review: "",
+  new: "",
+  archive: "",
+};
 
 export const DEFAULT_TRIAGE_CONFIG: TriageConfigInput = {
   sourceLabelId: "",
@@ -31,6 +50,7 @@ export const DEFAULT_TRIAGE_CONFIG: TriageConfigInput = {
   terms: { priority: [], review: [], new: [] },
   senderWhitelist: [],
   senderBlocklist: [],
+  categoryIntent: EMPTY_CATEGORY_INTENT,
   bounds: { maxPages: 3, maxMessagesPerPage: 50, maxTotalMessages: 100 },
 };
 
@@ -90,6 +110,33 @@ export function validateSenderBlocklist(addresses: readonly string[]): readonly 
   return validateSenderAddressList(addresses, "blocklist");
 }
 
+/** Normalize and bound-check intent prose. Empty strings are allowed on save; audit runs require completeness separately. */
+export function validateCategoryIntent(intent: CategoryIntent): CategoryIntent {
+  const normalized = {
+    priority: intent.priority.trim(),
+    review: intent.review.trim(),
+    new: intent.new.trim(),
+    archive: intent.archive.trim(),
+  };
+  for (const key of CATEGORY_INTENT_KEYS) {
+    if (normalized[key].length > MAX_CATEGORY_INTENT_CHARS) {
+      throw new Error(`Category intent for ${key} exceeds ${MAX_CATEGORY_INTENT_CHARS} characters`);
+    }
+  }
+  return normalized;
+}
+
+/** True when every category has non-empty intent — required before starting an audit run. */
+export function hasCompleteCategoryIntent(intent: CategoryIntent): boolean {
+  return CATEGORY_INTENT_KEYS.every((key) => intent[key].trim().length > 0);
+}
+
+export function assertCompleteCategoryIntent(intent: CategoryIntent): void {
+  if (!hasCompleteCategoryIntent(intent)) {
+    throw new Error("Category intent is required for every category before starting an audit run");
+  }
+}
+
 export function normalizeTriageConfig(input: TriageConfigInput): TriageConfigInput {
   validateLabelIds(input);
   return {
@@ -105,6 +152,7 @@ export function normalizeTriageConfig(input: TriageConfigInput): TriageConfigInp
     },
     senderWhitelist: validateSenderWhitelist(input.senderWhitelist),
     senderBlocklist: validateSenderBlocklist(input.senderBlocklist),
+    categoryIntent: validateCategoryIntent(input.categoryIntent),
     bounds: validateBounds(input.bounds),
   };
 }
@@ -121,6 +169,18 @@ export function asTerms(value: unknown): ClassificationTerms {
     priority: asStringArray(record.priority),
     review: asStringArray(record.review),
     new: asStringArray(record.new ?? record.newContest),
+  };
+}
+
+/** Migration default and missing-field fallback: empty strings for all categories. */
+export function asCategoryIntent(value: unknown): CategoryIntent {
+  if (!value || typeof value !== "object") return { ...EMPTY_CATEGORY_INTENT };
+  const record = value as Record<string, unknown>;
+  return {
+    priority: typeof record.priority === "string" ? record.priority : "",
+    review: typeof record.review === "string" ? record.review : "",
+    new: typeof record.new === "string" ? record.new : "",
+    archive: typeof record.archive === "string" ? record.archive : "",
   };
 }
 

@@ -47,7 +47,7 @@ export default async function ConfigurationPage() {
         <div className="brand-heading-copy">
           <p className="eyebrow">OWNER CONSOLE</p>
           <h1>Configuration</h1>
-          <p className="lede">Set Gmail labels by name, classification terms, sender protection, sync bounds, and message link root.</p>
+          <p className="lede">Set Gmail labels by name, classification terms, category intent, sender protection, sync bounds, and message link root.</p>
         </div>
       </div>
       <Link className="back-link" href="/">← Back to Email Triage</Link>

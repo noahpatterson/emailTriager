@@ -1,6 +1,11 @@
 import { requireOwner } from "@/src/server/auth/owner";
 import { TriageConfigService } from "@/src/server/config/triage";
-import { asStringArray, asTerms, type TriageConfigInput } from "@/src/server/config/triage-validate";
+import {
+  asCategoryIntent,
+  asStringArray,
+  asTerms,
+  type TriageConfigInput,
+} from "@/src/server/config/triage-validate";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
@@ -37,6 +42,7 @@ function parseBody(body: unknown): TriageConfigInput | null {
     terms: asTerms(record.terms),
     senderWhitelist: asStringArray(record.senderWhitelist),
     senderBlocklist: asStringArray(record.senderBlocklist),
+    categoryIntent: asCategoryIntent(record.categoryIntent),
     bounds,
   };
 }
@@ -79,9 +85,10 @@ export async function POST(request: Request): Promise<Response> {
         || message.includes("Label")
         || message.includes("distinct")
         || message.includes("term")
-        || message.includes("whitelist")
+        ||         message.includes("whitelist")
         || message.includes("blocklist")
         || message.includes("bound")
+        || message.includes("intent")
       ) {
         return Response.json({ error: message }, { status: 400 });
       }
