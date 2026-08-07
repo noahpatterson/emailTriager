@@ -70,8 +70,14 @@ function parseOtlpHeaders(raw: string | undefined): Record<string, string> {
     const eq = trimmed.indexOf("=");
     if (eq <= 0) continue;
     const key = trimmed.slice(0, eq).trim();
-    const value = decodeURIComponent(trimmed.slice(eq + 1).trim());
-    if (key) headers[key] = value;
+    if (!key) continue;
+    const encoded = trimmed.slice(eq + 1).trim();
+    try {
+      headers[key] = decodeURIComponent(encoded);
+    } catch {
+      // Malformed percent-encoding must not throw — observability is optional (ADR-0005).
+      continue;
+    }
   }
   return headers;
 }

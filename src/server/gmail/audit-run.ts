@@ -136,6 +136,8 @@ export type AuditRunServiceDeps = Readonly<{
   resolveModelConfig?: () => ModelRuntimeConfig;
   /** Defaults to env-backed tracer (noop when observability unset). */
   tracer?: AuditTracer;
+  /** Test seam — defaults to createAuditTracer when tracer is unset. */
+  createTracer?: () => AuditTracer;
 }>;
 
 function auditStatusFor(input: Readonly<{
@@ -275,9 +277,10 @@ export class AuditRunService {
     let status: AuditStartResult["status"] = "failed";
     let errorCode: AuditErrorCode | null = null;
     const ownsTracer = this.deps.tracer === undefined;
-    const tracer = this.deps.tracer ?? createAuditTracer();
+    let tracer: AuditTracer | undefined = this.deps.tracer;
 
     try {
+      tracer ??= (this.deps.createTracer ?? createAuditTracer)();
       return await withAuditRunSpan(
         tracer,
         { runId, syncRunId: options.syncRunId },
@@ -520,8 +523,10 @@ export class AuditRunService {
         ));
       throw caught;
     } finally {
-      await tracer.forceFlush().catch(() => undefined);
-      if (ownsTracer) await tracer.shutdown().catch(() => undefined);
+      if (tracer) {
+        await tracer.forceFlush().catch(() => undefined);
+        if (ownsTracer) await tracer.shutdown().catch(() => undefined);
+      }
       await this.db
         .delete(syncLease)
         .where(and(

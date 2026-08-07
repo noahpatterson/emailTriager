@@ -233,6 +233,86 @@ describe("shadow audit guarantees", () => {
     expect(err.code).toBe("lease_lost");
     expect(err).toBeInstanceOf(Error);
   });
+
+  test("tracer init failure still deletes the sync lease", async () => {
+    let leaseDeleted = false;
+    const db = {
+      select() {
+        return {
+          from() {
+            return {
+              where() {
+                return {
+                  orderBy() {
+                    return {
+                      limit: async () => [{ categoryIntent: {
+                        priority: "p", review: "r", new: "n", archive: "a",
+                      } }],
+                    };
+                  },
+                  limit: async () => [{ id: "sync-1", status: "completed" }],
+                };
+              },
+            };
+          },
+        };
+      },
+      insert(table: unknown) {
+        if (table === syncLease) {
+          return {
+            values() {
+              return {
+                onConflictDoUpdate() {
+                  return {
+                    returning: async () => [{ fenceToken: 7 }],
+                  };
+                },
+              };
+            },
+          };
+        }
+        return {
+          values() {
+            return {
+              onConflictDoNothing: async () => undefined,
+            };
+          },
+        };
+      },
+      delete(table: unknown) {
+        return {
+          where: async () => {
+            if (table === syncLease) leaseDeleted = true;
+          },
+        };
+      },
+      update() {
+        return {
+          set() {
+            return { where: async () => undefined };
+          },
+        };
+      },
+    } as unknown as Database;
+
+    const service = new AuditRunService(db, {
+      resolveModelConfig: () => ({
+        provider: "mock",
+        modelName: "mock",
+        baseUrl: "http://localhost",
+        apiKey: "k",
+      }),
+      resolveEncryptionKey: () => SNAP_KEY,
+      createTracer: () => {
+        throw new Error("tracer bootstrap failed");
+      },
+    });
+
+    await expect(service.start("owner", { syncRunId: "sync-1" })).rejects.toThrow(
+      "tracer bootstrap failed",
+    );
+    expect(leaseDeleted).toBe(true);
+  });
 });
 
 /**

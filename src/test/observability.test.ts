@@ -58,6 +58,16 @@ describe("getObservabilityConfig", () => {
     });
     expect(config.exporter).toBe("none");
   });
+
+  test("skips malformed OTEL_EXPORTER_OTLP_HEADERS without throwing", () => {
+    const config = getObservabilityConfig({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "https://phoenix.example/v1/traces",
+      OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer%,x-custom=ok",
+    });
+    expect(config.exporter).toBe("otlp");
+    expect(config.otlp?.headers).toEqual({ "x-custom": "ok" });
+    expect(() => createAuditTracer({ config })).not.toThrow();
+  });
 });
 
 describe("createAuditTracer", () => {
