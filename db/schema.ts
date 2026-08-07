@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -372,7 +373,8 @@ export const verdict = pgTable(
 
 /**
  * Demotion into archive queued for owner confirmation (ADR-0010).
- * confirmed_at null = still pending; confirm applies Gmail archive filing.
+ * Open = confirmed_at and cancelled_at both null.
+ * Confirm applies Gmail archive filing; cancel dismisses (e.g. starred/protected).
  */
 export const pendingDemotion = pgTable(
   "pending_demotion",
@@ -386,10 +388,14 @@ export const pendingDemotion = pgTable(
       .notNull()
       .references(() => verdict.id, { onDelete: "cascade" }),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     unique("pending_demotion_verdict_id_unique").on(table.verdictId),
+    uniqueIndex("pending_demotion_one_open_per_message")
+      .on(table.ownerAuthUserId, table.gmailMessageId)
+      .where(sql`${table.confirmedAt} IS NULL AND ${table.cancelledAt} IS NULL`),
     index("pending_demotion_owner_pending_idx").on(table.ownerAuthUserId, table.confirmedAt),
     index("pending_demotion_owner_message_idx").on(table.ownerAuthUserId, table.gmailMessageId),
   ],

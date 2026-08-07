@@ -10,7 +10,7 @@ export async function handleDemotionConfirmPost(
   try {
     requireSameOrigin(request);
     const owner = await requireOwner();
-    const decoded = decodeURIComponent(messageId).trim();
+    const decoded = messageId.trim();
     if (!decoded) {
       return Response.json({ error: "gmailMessageId is required" }, { status: 400 });
     }

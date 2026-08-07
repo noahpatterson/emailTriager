@@ -6,7 +6,6 @@ import {
   auditRun,
   goldenSetMessage,
   messageProcessing,
-  pendingDemotion,
   promptVersion,
   syncLease,
   syncRun,
@@ -510,14 +509,37 @@ export class AuditRunService {
                 );
               }
               if (decision === "pending_demotion") {
-                await this.db
-                  .insert(pendingDemotion)
-                  .values({
-                    ownerAuthUserId: ownerId,
-                    gmailMessageId: message.gmailMessageId,
-                    verdictId,
-                  })
-                  .onConflictDoNothing();
+                // Fence in the same statement so a stale run cannot enqueue after lease loss.
+                const fenced = await this.db.execute(sql`
+                  INSERT INTO pending_demotion (owner_auth_user_id, gmail_message_id, verdict_id)
+                  SELECT ${ownerId}, ${message.gmailMessageId}, ${verdictId}
+                  WHERE EXISTS (
+                    SELECT 1 FROM sync_lease
+                    WHERE owner_auth_user_id = ${ownerId}
+                      AND lease_owner = ${runId}::uuid
+                      AND fence_token = ${lease.fenceToken}
+                      AND lease_expires_at > now()
+                  )
+                  ON CONFLICT DO NOTHING
+                  RETURNING id
+                `);
+                const rowCount = Array.isArray(fenced)
+                  ? fenced.length
+                  : Number((fenced as { rowCount?: number }).rowCount ?? 0);
+                if (rowCount === 0) {
+                  const [held] = await this.db
+                    .select({ fenceToken: syncLease.fenceToken })
+                    .from(syncLease)
+                    .where(and(
+                      eq(syncLease.ownerAuthUserId, ownerId),
+                      eq(syncLease.leaseOwner, runId),
+                      eq(syncLease.fenceToken, lease.fenceToken),
+                      sql`${syncLease.leaseExpiresAt} > now()`,
+                    ))
+                    .limit(1);
+                  if (!held) throw new AuditLeaseLostError();
+                  // Lease held but conflict (open demotion already exists) — fine.
+                }
               }
               processedCount += 1;
             } catch (caught) {

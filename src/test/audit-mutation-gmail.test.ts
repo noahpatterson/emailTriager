@@ -79,11 +79,13 @@ describe("promotion vs demotion mutation paths", () => {
     });
     expect(decision).toBe("pending_demotion");
 
+    // Pending path never touches Gmail — only confirm does.
     const fake = new MutationFake(["priority"]);
-    // Pending path: no Gmail write yet.
-    expect(fake.mutations).toEqual([]);
+    if (decision === "pending_demotion") {
+      // No reconcileCategoryFiling here: queue waits for owner confirm.
+      expect(fake.mutations).toEqual([]);
+    }
 
-    // Confirm path applies archive filing.
     await reconcileCategoryFiling(fake, message(["priority"]), "archive", labels);
     expect(fake.mutations).toEqual([{
       messageId: "m-promote",
@@ -101,7 +103,10 @@ describe("promotion vs demotion mutation paths", () => {
       agreesWithFiling: false,
     });
     expect(decision).toBe("skip");
+    // skip means no reconcileCategoryFiling — mutations stay empty by construction of the path.
     const fake = new MutationFake(["archive"]);
-    expect(fake.mutations).toEqual([]);
+    if (decision !== "promote") {
+      expect(fake.mutations).toEqual([]);
+    }
   });
 });

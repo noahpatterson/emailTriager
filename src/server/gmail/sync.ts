@@ -147,8 +147,9 @@ export async function reconcileCategoryFiling(
     if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
       return currentLabels.has(destination);
     }
+    // Fence check outside the modifyLabels try so lease-loss is never retried as Gmail refresh.
+    await assertMutationAllowed();
     try {
-      await assertMutationAllowed();
       await provider.modifyLabels({
         messageId: message.id,
         addLabelIds,

@@ -109,9 +109,15 @@ describe("POST /api/demotion/:messageId", () => {
   });
 
   test("rejects cross-origin posts", async () => {
+    let confirmCalled = false;
+    confirmImpl = async () => {
+      confirmCalled = true;
+      throw new Error("confirm must not run for cross-origin");
+    };
     const response = await POST(postRequest("m1", "https://evil.example"), {
       params: Promise.resolve({ messageId: "m1" }),
     });
-    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(confirmCalled).toBe(false);
+    expect(response.status).toBe(400);
   });
 });

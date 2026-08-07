@@ -1,10 +1,11 @@
 /**
  * Pending demotion queue: owner confirms archive filings from audit (ADR-0010).
- * Confirm applies Gmail label change via reconcileCategoryFiling; never auto-archives.
+ * Confirm applies Gmail archive label via reconcileCategoryFiling; never auto-archives.
+ * Starred/protected mail is cancelled (terminal) so it leaves the queue without mutation.
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   auditRun,
   messageSnapshot,
@@ -15,7 +16,6 @@ import {
 } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { database, type Database } from "@/src/server/db";
-import type { Category } from "@/src/server/gmail/corpus";
 import type { GmailProvider } from "@/src/server/gmail/contracts";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { decryptMessageSnapshotPayload } from "@/src/server/gmail/message-snapshot";
@@ -23,6 +23,17 @@ import { truncatePromptBody } from "@/src/server/gmail/judge-prompt";
 import { parseGmailMessage, type GmailMessage } from "@/src/server/gmail/message";
 import { ensureOwnerBinding as writeOwnerBinding } from "@/src/server/owner-binding";
 import { reconcileCategoryFiling } from "@/src/server/gmail/sync";
+import type {
+  ConfirmDemotionResult,
+  DemotionQueueResponse,
+  PendingDemotionItem,
+} from "@/src/server/gmail/demotion-types";
+
+export type {
+  ConfirmDemotionResult,
+  DemotionQueueResponse,
+  PendingDemotionItem,
+} from "@/src/server/gmail/demotion-types";
 
 export const DEFAULT_DEMOTION_PAGE_SIZE = 20;
 export const DEMOTION_SNAPSHOT_EXCERPT_CHARS = 500;
@@ -35,33 +46,19 @@ export class DemotionClientError extends Error {
   }
 }
 
-export type PendingDemotionItem = Readonly<{
-  id: number;
-  gmailMessageId: string;
-  verdictId: number;
-  recommendedCategory: Category;
-  rationale: string | null;
-  subject: string;
-  from: string;
-  bodyExcerpt: string;
-  createdAt: string;
-}>;
-
-export type DemotionQueueResponse = Readonly<{
-  pendingCount: number;
-  items: readonly PendingDemotionItem[];
-}>;
-
-export type ConfirmDemotionResult = Readonly<{
-  gmailMessageId: string;
-  confirmed: boolean;
-  alreadyConfirmed: boolean;
-}>;
-
 export type DemotionServiceDeps = Readonly<{
   providerForOwner?: (ownerId: string) => Promise<GmailProvider>;
   encryptionKey?: string;
 }>;
+
+function openDemotionFilter(ownerId: string) {
+  return and(
+    eq(pendingDemotion.ownerAuthUserId, ownerId),
+    isNull(pendingDemotion.confirmedAt),
+    isNull(pendingDemotion.cancelledAt),
+    eq(verdict.recommendedCategory, "archive"),
+  );
+}
 
 export class DemotionService {
   private readonly providerForOwner: (ownerId: string) => Promise<GmailProvider>;
@@ -87,16 +84,21 @@ export class DemotionService {
     const pageSize = options.pageSize ?? DEFAULT_DEMOTION_PAGE_SIZE;
     const offset = options.offset ?? 0;
 
+    const [countRow] = await this.db
+      .select({ value: count() })
+      .from(pendingDemotion)
+      .innerJoin(verdict, eq(pendingDemotion.verdictId, verdict.id))
+      .where(openDemotionFilter(ownerId));
+    const pendingCount = Number(countRow?.value ?? 0);
+
     const rows = await this.db
       .select({
         id: pendingDemotion.id,
         gmailMessageId: pendingDemotion.gmailMessageId,
         verdictId: pendingDemotion.verdictId,
         createdAt: pendingDemotion.createdAt,
-        recommendedCategory: verdict.recommendedCategory,
         rationale: verdict.rationale,
         encryptedPayload: messageSnapshot.encryptedPayload,
-        keyVersion: messageSnapshot.keyVersion,
       })
       .from(pendingDemotion)
       .innerJoin(verdict, eq(pendingDemotion.verdictId, verdict.id))
@@ -109,17 +111,12 @@ export class DemotionService {
           eq(messageSnapshot.runId, auditRun.syncRunId),
         ),
       )
-      .where(and(
-        eq(pendingDemotion.ownerAuthUserId, ownerId),
-        isNull(pendingDemotion.confirmedAt),
-      ))
-      .orderBy(desc(pendingDemotion.createdAt));
+      .where(openDemotionFilter(ownerId))
+      .orderBy(desc(pendingDemotion.createdAt))
+      .limit(pageSize)
+      .offset(offset);
 
-    const pendingCount = rows.length;
-    const window = rows.slice(offset, offset + pageSize);
-    const items: PendingDemotionItem[] = [];
-
-    for (const row of window) {
+    const items: PendingDemotionItem[] = rows.map((row) => {
       let subject = "";
       let from = "";
       let bodyExcerpt = "";
@@ -133,22 +130,18 @@ export class DemotionService {
           // Snapshot decrypt failure — still list the row with empty excerpt.
         }
       }
-      const recommended = row.recommendedCategory;
-      if (recommended !== "priority" && recommended !== "review" && recommended !== "new" && recommended !== "archive") {
-        continue;
-      }
-      items.push({
+      return {
         id: row.id,
         gmailMessageId: row.gmailMessageId,
         verdictId: row.verdictId,
-        recommendedCategory: recommended,
+        recommendedCategory: "archive",
         rationale: row.rationale,
         subject,
         from,
         bodyExcerpt,
         createdAt: row.createdAt.toISOString(),
-      });
-    }
+      };
+    });
 
     return { pendingCount, items };
   }
@@ -162,27 +155,38 @@ export class DemotionService {
       .select({
         id: pendingDemotion.id,
         confirmedAt: pendingDemotion.confirmedAt,
+        cancelledAt: pendingDemotion.cancelledAt,
       })
       .from(pendingDemotion)
+      .innerJoin(verdict, eq(pendingDemotion.verdictId, verdict.id))
       .where(and(
         eq(pendingDemotion.ownerAuthUserId, ownerId),
         eq(pendingDemotion.gmailMessageId, messageId),
         isNull(pendingDemotion.confirmedAt),
+        isNull(pendingDemotion.cancelledAt),
+        eq(verdict.recommendedCategory, "archive"),
       ))
       .orderBy(desc(pendingDemotion.createdAt))
       .limit(1);
 
     if (!pending) {
       const [existing] = await this.db
-        .select({ id: pendingDemotion.id })
+        .select({
+          id: pendingDemotion.id,
+          confirmedAt: pendingDemotion.confirmedAt,
+          cancelledAt: pendingDemotion.cancelledAt,
+        })
         .from(pendingDemotion)
         .where(and(
           eq(pendingDemotion.ownerAuthUserId, ownerId),
           eq(pendingDemotion.gmailMessageId, messageId),
         ))
         .limit(1);
-      if (existing) {
+      if (existing?.confirmedAt) {
         return { gmailMessageId: messageId, confirmed: true, alreadyConfirmed: true };
+      }
+      if (existing?.cancelledAt) {
+        return { gmailMessageId: messageId, confirmed: false, alreadyConfirmed: false, cancelled: true };
       }
       throw new DemotionClientError("Pending demotion not found");
     }
@@ -253,7 +257,16 @@ export class DemotionService {
         },
       );
       if (!applied) {
-        throw new DemotionClientError("Cannot demote a protected or starred message");
+        // Protected/starred: leave Gmail alone but clear the queue (ADR-0010).
+        await this.db
+          .update(pendingDemotion)
+          .set({ cancelledAt: sql`now()` })
+          .where(and(
+            eq(pendingDemotion.id, pending.id),
+            isNull(pendingDemotion.confirmedAt),
+            isNull(pendingDemotion.cancelledAt),
+          ));
+        return { gmailMessageId: messageId, confirmed: false, alreadyConfirmed: false, cancelled: true };
       }
 
       await this.db
@@ -262,6 +275,7 @@ export class DemotionService {
         .where(and(
           eq(pendingDemotion.id, pending.id),
           isNull(pendingDemotion.confirmedAt),
+          isNull(pendingDemotion.cancelledAt),
         ));
 
       return { gmailMessageId: messageId, confirmed: true, alreadyConfirmed: false };

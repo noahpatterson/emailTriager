@@ -1,24 +1,13 @@
 "use client";
 
 import { useCallback, useState, useTransition } from "react";
-import type { Category } from "@/src/server/gmail/corpus";
+import type {
+  DemotionQueueResponse,
+  PendingDemotionItem,
+} from "@/src/server/gmail/demotion-types";
 
-export type DemotionItem = Readonly<{
-  id: number;
-  gmailMessageId: string;
-  verdictId: number;
-  recommendedCategory: Category;
-  rationale: string | null;
-  subject: string;
-  from: string;
-  bodyExcerpt: string;
-  createdAt: string;
-}>;
-
-export type DemotionQueuePayload = Readonly<{
-  pendingCount: number;
-  items: readonly DemotionItem[];
-}>;
+export type DemotionItem = PendingDemotionItem;
+export type DemotionQueuePayload = DemotionQueueResponse;
 
 async function loadQueue(): Promise<DemotionQueuePayload> {
   const response = await fetch("/api/demotion/queue", {
@@ -55,6 +44,7 @@ export function DemotionQueueClient({
   const [pending, startTransition] = useTransition();
 
   const refresh = useCallback(() => {
+    if (busy || pending) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -65,13 +55,14 @@ export function DemotionQueueClient({
         setError(caught instanceof Error ? caught.message : "Could not load demotion queue");
       }
     });
-  }, []);
+  }, [busy, pending]);
 
   const items = queue.items;
   const current = items[index] ?? null;
+  const blocked = busy || pending;
 
   const confirmCurrent = useCallback(async () => {
-    if (!current || busy) return;
+    if (!current || blocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -93,7 +84,7 @@ export function DemotionQueueClient({
     } finally {
       setBusy(false);
     }
-  }, [busy, current, items.length]);
+  }, [blocked, current, items.length]);
 
   if (items.length === 0) {
     return (
@@ -103,7 +94,7 @@ export function DemotionQueueClient({
             ? "Sitting empty — refresh for more pending demotions."
             : "No pending demotions. Archive recommendations from audit appear here for confirmation."}
         </p>
-        <button type="button" className="button" disabled={pending} onClick={refresh}>
+        <button type="button" className="button" disabled={blocked} onClick={refresh}>
           {pending ? "Refreshing…" : "Refresh"}
         </button>
         {error ? <p className="error-text" role="alert">{error}</p> : null}
@@ -137,18 +128,18 @@ export function DemotionQueueClient({
         </div>
       ) : null}
       <div className="review-actions">
-        <button type="button" className="button" disabled={busy || !current} onClick={() => void confirmCurrent()}>
+        <button type="button" className="button" disabled={blocked || !current} onClick={() => void confirmCurrent()}>
           {busy ? "Confirming…" : "Confirm archive in Gmail"}
         </button>
         <button
           type="button"
           className="button"
-          disabled={busy || index >= items.length - 1}
+          disabled={blocked || index >= items.length - 1}
           onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
         >
           Skip for now
         </button>
-        <button type="button" className="button" disabled={pending} onClick={refresh}>
+        <button type="button" className="button" disabled={blocked} onClick={refresh}>
           {pending ? "Refreshing…" : "Refresh"}
         </button>
       </div>
