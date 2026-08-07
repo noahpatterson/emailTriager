@@ -21,10 +21,10 @@ function okVerdict(category: "priority" | "review" | "new" | "archive"): JudgeVe
 }
 
 describe("runAuditBatch", () => {
-  test("skips protected messages with no verdict row", async () => {
+  test("judges every eligible message passed by the caller", async () => {
     const messages: AuditBatchMessage[] = [
-      { gmailMessageId: "p1", outcome: "protected", from: "a@x", subject: "s", bodyText: "b" },
       { gmailMessageId: "m1", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m2", outcome: "blocked", from: "a@x", subject: "s", bodyText: "b" },
     ];
     const calls: string[] = [];
     const verdicts = await runAuditBatch({
@@ -35,11 +35,11 @@ describe("runAuditBatch", () => {
         return okVerdict("priority");
       },
     });
-    expect(calls).toEqual(["m1"]);
-    expect(verdicts.map((v) => v.gmailMessageId)).toEqual(["m1"]);
+    expect(calls).toEqual(["m1", "m2"]);
+    expect(verdicts.map((v) => v.gmailMessageId)).toEqual(["m1", "m2"]);
   });
 
-  test("issues one model call per non-protected message", async () => {
+  test("issues one model call per message", async () => {
     const messages: AuditBatchMessage[] = [
       { gmailMessageId: "m1", outcome: "blocked", from: "a@x", subject: "s", bodyText: "b" },
       { gmailMessageId: "m2", outcome: "unmatched", from: "a@x", subject: "s", bodyText: "b" },
@@ -108,6 +108,33 @@ describe("runAuditBatch", () => {
     });
     expect(verdicts.find((v) => v.gmailMessageId === "bad")?.malformed).toBe(true);
     expect(verdicts.find((v) => v.gmailMessageId === "good")?.malformed).toBe(false);
+  });
+
+  test("drains active workers before propagating a judge failure", async () => {
+    let finishedAfterStop = 0;
+    const messages: AuditBatchMessage[] = [
+      { gmailMessageId: "m0", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m1", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m2", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m3", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+    ];
+    await expect(runAuditBatch({
+      messages,
+      concurrency: 2,
+      judge: async (message) => {
+        if (message.gmailMessageId === "m0") {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          finishedAfterStop += 1;
+          return okVerdict("priority");
+        }
+        if (message.gmailMessageId === "m1") {
+          throw new Error("boom");
+        }
+        finishedAfterStop += 1;
+        return okVerdict("priority");
+      },
+    })).rejects.toThrow("boom");
+    expect(finishedAfterStop).toBeGreaterThanOrEqual(1);
   });
 
   // Keep MockLanguageModel import live so the suite documents the AC seam.

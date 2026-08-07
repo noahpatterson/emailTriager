@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { JUDGE_SYSTEM_PREAMBLE } from "@/src/server/gmail/judge-prompt";
 
-/** Append-only prompt contract — hashed body must match JUDGE_SYSTEM_PREAMBLE. */
+/** Fallback body when hashing without intents (tests / migration of old rows). */
 export const JUDGE_PROMPT_VERSION_BODY = JUDGE_SYSTEM_PREAMBLE;
 
 export function promptVersionIdFor(body: string = JUDGE_PROMPT_VERSION_BODY): string {

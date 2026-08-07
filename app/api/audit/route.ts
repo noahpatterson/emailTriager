@@ -1,8 +1,15 @@
 import { requireOwner } from "@/src/server/auth/owner";
-import { AuditRunService } from "@/src/server/gmail/audit-run";
+import {
+  AuditAlreadyRunningError,
+  AuditClientError,
+  AuditRunService,
+} from "@/src/server/gmail/audit-run";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
-export async function POST(request: Request): Promise<Response> {
+export async function handleAuditPost(
+  request: Request,
+  service: AuditRunService = new AuditRunService(),
+): Promise<Response> {
   try {
     requireSameOrigin(request);
     const owner = await requireOwner();
@@ -17,26 +24,24 @@ export async function POST(request: Request): Promise<Response> {
     }
     const auditRunId = typeof record.auditRunId === "string" ? record.auditRunId.trim() : undefined;
     try {
-      const result = await new AuditRunService().start(owner.userId, {
+      // Work is synchronous and bounded; 200 reflects completion of this invocation
+      // (not a background accept). Resume via another POST with auditRunId / nextCursor.
+      const result = await service.start(owner.userId, {
         syncRunId,
         auditRunId: auditRunId || undefined,
       });
-      return Response.json(result, { status: 202 });
+      return Response.json(result, { status: 200 });
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "";
-      if (
-        message.includes("Category intent")
-        || message.includes("Sync configuration")
-        || message.includes("Sync run")
-        || message.includes("Audit requires")
-        || message.includes("already running")
-        || message.includes("Invalid audit")
-      ) {
-        return Response.json({ error: message }, { status: 400 });
+      if (caught instanceof AuditAlreadyRunningError || caught instanceof AuditClientError) {
+        return Response.json({ error: caught.message }, { status: 400 });
       }
       throw caught;
     }
   } catch {
     return sanitizedErrorResponse();
   }
+}
+
+export async function POST(request: Request): Promise<Response> {
+  return handleAuditPost(request);
 }

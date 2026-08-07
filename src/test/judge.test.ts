@@ -107,4 +107,19 @@ describe("judgeMessage", () => {
     expect(result.malformed).toBe(true);
     expect(result.recommendedCategory).toBeNull();
   });
+
+  test("rethrows transport failures as JudgeTransportError", async () => {
+    const { JudgeTransportError } = await import("../server/gmail/judge");
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new Error("ECONNRESET");
+      },
+    });
+    await expect(judgeMessage({
+      model,
+      system: "system",
+      user: "user",
+      tags: TAGS,
+    })).rejects.toBeInstanceOf(JudgeTransportError);
+  });
 });

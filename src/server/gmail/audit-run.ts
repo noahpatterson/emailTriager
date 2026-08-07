@@ -15,7 +15,7 @@ import {
 import { getServerConfig } from "@/src/config/server";
 import {
   asCategoryIntent,
-  assertCompleteCategoryIntent,
+  hasCompleteCategoryIntent,
 } from "@/src/server/config/triage-validate";
 import { database, type Database } from "@/src/server/db";
 import {
@@ -25,9 +25,10 @@ import {
   type AuditBatchMessage,
 } from "@/src/server/gmail/audit-batch";
 import { buildAuditCandidates } from "@/src/server/gmail/audit-candidates";
-import { judgeMessage } from "@/src/server/gmail/judge";
+import { JudgeTransportError, judgeMessage } from "@/src/server/gmail/judge";
 import {
   assembleJudgePrompt,
+  judgeSystemPromptFor,
   selectExemplarsByCategory,
   type ExemplarSnippet,
 } from "@/src/server/gmail/judge-prompt";
@@ -37,10 +38,7 @@ import {
   getModelConfig,
   type ModelRuntimeConfig,
 } from "@/src/server/gmail/model-config";
-import {
-  JUDGE_PROMPT_VERSION_BODY,
-  promptVersionIdFor,
-} from "@/src/server/gmail/prompt-version";
+import { promptVersionIdFor } from "@/src/server/gmail/prompt-version";
 import {
   withAuditRunSpan,
   withJudgeSpan,
@@ -53,6 +51,49 @@ import type { ClassificationOutcome } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
 
 const AUDIT_LEASE_SECONDS = 300;
+const LEASE_RENEW_INTERVAL_MS = 60_000;
+
+/** Stable codes persisted in errorSummary — never raw driver/provider text. */
+export const AUDIT_ERROR_CODES = [
+  "lease_lost",
+  "judge_transport",
+  "decrypt_failed",
+  "audit_failed",
+] as const;
+
+export type AuditErrorCode = (typeof AUDIT_ERROR_CODES)[number];
+
+export const AUDIT_ERROR_CODE_SET: ReadonlySet<string> = new Set(AUDIT_ERROR_CODES);
+
+export type AuditRunStatus =
+  | "running"
+  | "bounded_incomplete"
+  | "completed"
+  | "partial_failure"
+  | "failed";
+
+export class AuditLeaseLostError extends Error {
+  readonly code = "lease_lost" as const;
+  constructor() {
+    super("Audit lease lost");
+    this.name = "AuditLeaseLostError";
+  }
+}
+
+export class AuditAlreadyRunningError extends Error {
+  constructor() {
+    super("Synchronization already running");
+    this.name = "AuditAlreadyRunningError";
+  }
+}
+
+/** Owner-facing validation failures — map to HTTP 400 without message substring matching. */
+export class AuditClientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuditClientError";
+  }
+}
 
 export type AuditStartOptions = Readonly<{
   syncRunId: string;
@@ -70,19 +111,21 @@ export type AuditStartResult = Readonly<{
   totalEligible: number;
   nextCursor: string | null;
   malformedCount: number;
+  errorCode: AuditErrorCode | null;
 }>;
 
 export type AuditStatusView = Readonly<{
   id: string;
   syncRunId: string;
-  status: string;
+  status: AuditRunStatus;
   processedCount: number;
   totalEligible: number;
   nextCursor: string | null;
   modelProvider: string;
   modelName: string;
   promptVersionId: string;
-  errorSummary: string | null;
+  /** Stable error code only — never raw internal messages. */
+  errorSummary: AuditErrorCode | null;
   startedAt: Date;
   finishedAt: Date | null;
 }>;
@@ -103,6 +146,12 @@ function auditStatusFor(input: Readonly<{
   if (input.failureCount > 0) return "failed";
   if (!input.exhausted) return "bounded_incomplete";
   return "completed";
+}
+
+function asErrorCode(caught: unknown): AuditErrorCode {
+  if (caught instanceof AuditLeaseLostError) return "lease_lost";
+  if (caught instanceof JudgeTransportError) return "judge_transport";
+  return "audit_failed";
 }
 
 export class AuditRunService {
@@ -130,12 +179,17 @@ export class AuditRunService {
       .from(auditRun)
       .where(and(eq(auditRun.id, auditRunId), eq(auditRun.ownerAuthUserId, ownerId)))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    return {
+      ...row,
+      status: row.status as AuditRunStatus,
+      errorSummary: row.errorSummary && AUDIT_ERROR_CODE_SET.has(row.errorSummary)
+        ? (row.errorSummary as AuditErrorCode)
+        : (row.errorSummary ? "audit_failed" : null),
+    };
   }
 
   async start(ownerId: string, options: AuditStartOptions): Promise<AuditStartResult> {
-    const modelConfig = (this.deps.resolveModelConfig ?? getModelConfig)();
-    const encryptionKey = (this.deps.resolveEncryptionKey ?? (() => getServerConfig().tokenEncryptionKeyV1))();
     const concurrency = options.concurrency ?? DEFAULT_AUDIT_CONCURRENCY;
     const maxMessages = options.maxMessages ?? DEFAULT_AUDIT_MAX_MESSAGES;
 
@@ -147,9 +201,13 @@ export class AuditRunService {
       .where(eq(triageConfig.ownerAuthUserId, ownerId))
       .orderBy(desc(triageConfig.version))
       .limit(1);
-    if (!config) throw new Error("Sync configuration missing");
+    if (!config) throw new AuditClientError("Sync configuration missing");
     const categoryIntent = asCategoryIntent(config.categoryIntent);
-    assertCompleteCategoryIntent(categoryIntent);
+    if (!hasCompleteCategoryIntent(categoryIntent)) {
+      throw new AuditClientError(
+        "Category intent is required for every category before starting an audit run",
+      );
+    }
 
     const [sync] = await this.db
       .select({
@@ -159,9 +217,9 @@ export class AuditRunService {
       .from(syncRun)
       .where(and(eq(syncRun.id, options.syncRunId), eq(syncRun.ownerAuthUserId, ownerId)))
       .limit(1);
-    if (!sync) throw new Error("Sync run not found");
+    if (!sync) throw new AuditClientError("Sync run not found");
     if (sync.status !== "completed") {
-      throw new Error("Audit requires a completed sync run");
+      throw new AuditClientError("Audit requires a completed sync run");
     }
 
     let resumeRunId = options.auditRunId ?? null;
@@ -179,10 +237,11 @@ export class AuditRunService {
       resumeRunId = checkpoint?.id ?? null;
     }
 
-    const promptId = promptVersionIdFor();
+    const systemPromptBody = judgeSystemPromptFor(categoryIntent);
+    const promptId = promptVersionIdFor(systemPromptBody);
     await this.db
       .insert(promptVersion)
-      .values({ id: promptId, body: JUDGE_PROMPT_VERSION_BODY })
+      .values({ id: promptId, body: systemPromptBody })
       .onConflictDoNothing();
 
     const runId = resumeRunId ?? randomUUID();
@@ -203,13 +262,18 @@ export class AuditRunService {
         setWhere: sql`${syncLease.leaseExpiresAt} <= now()`,
       })
       .returning({ fenceToken: syncLease.fenceToken });
-    if (!lease) throw new Error("Synchronization already running");
+    if (!lease) throw new AuditAlreadyRunningError();
+
+    // Resolve model/secrets only after lease — keeps lease-refusal tests env-independent.
+    const modelConfig = (this.deps.resolveModelConfig ?? getModelConfig)();
+    const encryptionKey = (this.deps.resolveEncryptionKey ?? (() => getServerConfig().tokenEncryptionKeyV1))();
 
     let malformedCount = 0;
     let processedCount = 0;
     let totalEligible = 0;
     let nextCursor: string | null = null;
     let status: AuditStartResult["status"] = "failed";
+    let errorCode: AuditErrorCode | null = null;
     const ownsTracer = this.deps.tracer === undefined;
     const tracer = this.deps.tracer ?? createAuditTracer();
 
@@ -228,7 +292,7 @@ export class AuditRunService {
           .from(auditRun)
           .where(and(eq(auditRun.id, resumeRunId), eq(auditRun.ownerAuthUserId, ownerId)))
           .limit(1);
-        if (!existing) throw new Error("Invalid audit checkpoint");
+        if (!existing) throw new AuditClientError("Invalid audit checkpoint");
         await this.db
           .update(auditRun)
           .set({
@@ -238,6 +302,9 @@ export class AuditRunService {
             fenceToken: lease.fenceToken,
             finishedAt: null,
             errorSummary: null,
+            promptVersionId: promptId,
+            modelProvider: modelConfig.provider,
+            modelName: modelConfig.modelName,
           })
           .where(eq(auditRun.id, resumeRunId));
         processedCount = existing.processedCount;
@@ -275,7 +342,7 @@ export class AuditRunService {
         .where(eq(verdict.auditRunId, runId));
       const alreadyJudged = new Set(judgedRows.map((row) => row.gmailMessageId));
 
-      const allCandidates = buildAuditCandidates({
+      const built = buildAuditCandidates({
         snapshots,
         outcomes: outcomes.map((row) => ({
           gmailMessageId: row.gmailMessageId,
@@ -284,23 +351,27 @@ export class AuditRunService {
         encryptionKey,
         alreadyJudgedIds: alreadyJudged,
       });
+      const allCandidates = built.candidates;
+      const decryptFailureCount = built.decryptFailures.length;
       if (!resumeRunId) {
-        totalEligible = allCandidates.length + alreadyJudged.size;
+        totalEligible = allCandidates.length + alreadyJudged.size + decryptFailureCount;
       } else if (totalEligible === 0) {
-        totalEligible = allCandidates.length + alreadyJudged.size;
+        totalEligible = allCandidates.length + alreadyJudged.size + decryptFailureCount;
       }
 
       const batch = allCandidates.slice(0, maxMessages);
       const remainingAfterBatch = allCandidates.slice(batch.length);
-      const exhausted = remainingAfterBatch.length === 0;
-      // Resume progress is verdict rows already persisted; cursor points at the next pending id.
+      const exhausted = remainingAfterBatch.length === 0 && decryptFailureCount === 0;
       nextCursor = remainingAfterBatch[0]?.gmailMessageId ?? null;
 
       const exemplars = await this.loadExemplars(ownerId);
       const exemplarsByCategory = selectExemplarsByCategory(exemplars);
       const model = (this.deps.createModel ?? createJudgeModel)(modelConfig);
 
+      let lastRenewAt = 0;
       const renewLease = async (): Promise<void> => {
+        const now = Date.now();
+        if (lastRenewAt > 0 && now - lastRenewAt < LEASE_RENEW_INTERVAL_MS) return;
         const [renewed] = await this.db
           .update(syncLease)
           .set({
@@ -313,12 +384,14 @@ export class AuditRunService {
             sql`${syncLease.leaseExpiresAt} > now()`,
           ))
           .returning({ fenceToken: syncLease.fenceToken });
-        if (!renewed) throw new Error("Audit lease lost");
+        if (!renewed) throw new AuditLeaseLostError();
+        lastRenewAt = now;
       };
 
       let leaseLost = false;
+      let transportFailed = false;
       try {
-        const batchVerdicts = await runAuditBatch({
+        await runAuditBatch({
           messages: batch,
           concurrency,
           judge: async (message: AuditBatchMessage) => {
@@ -329,7 +402,7 @@ export class AuditRunService {
                 from: message.from,
                 subject: message.subject,
                 bodyText: message.bodyText,
-                deterministicOutcome: message.outcome as ClassificationOutcome,
+                deterministicOutcome: message.outcome,
               },
               exemplars: exemplarsByCategory,
             });
@@ -367,21 +440,28 @@ export class AuditRunService {
             return judged;
           },
         });
-        void batchVerdicts;
       } catch (caught) {
-        if (caught instanceof Error && caught.message.includes("lease lost")) {
+        if (caught instanceof AuditLeaseLostError) {
           leaseLost = true;
+          errorCode = "lease_lost";
+        } else if (caught instanceof JudgeTransportError) {
+          transportFailed = true;
+          errorCode = "judge_transport";
         } else {
           throw caught;
         }
       }
 
+      const failureCount = (leaseLost ? 1 : 0)
+        + (transportFailed ? 1 : 0)
+        + decryptFailureCount;
+      if (decryptFailureCount > 0 && errorCode === null) errorCode = "decrypt_failed";
+
       status = auditStatusFor({
-        exhausted: exhausted && !leaseLost,
-        failureCount: leaseLost ? 1 : 0,
+        exhausted: exhausted && !leaseLost && !transportFailed,
+        failureCount,
       });
-      if (leaseLost && nextCursor === null && batch.length > 0) {
-        // Lease lost mid-batch: point cursor at first message still missing a verdict.
+      if ((leaseLost || transportFailed) && batch.length > 0) {
         const judgedNow = await this.db
           .select({ gmailMessageId: verdict.gmailMessageId })
           .from(verdict)
@@ -402,9 +482,12 @@ export class AuditRunService {
           finishedAt: sql`now()`,
           leaseOwner: null,
           leaseExpiresAt: null,
-          errorSummary: leaseLost ? "Audit lease lost" : null,
+          errorSummary: errorCode,
         })
-        .where(eq(auditRun.id, runId));
+        .where(and(
+          eq(auditRun.id, runId),
+          eq(auditRun.fenceToken, lease.fenceToken),
+        ));
 
       runSpan.setAttribute("audit.status", status);
 
@@ -416,21 +499,25 @@ export class AuditRunService {
         totalEligible,
         nextCursor,
         malformedCount,
+        errorCode,
       };
         },
       );
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Audit failed";
+      errorCode = asErrorCode(caught);
       await this.db
         .update(auditRun)
         .set({
           status: "failed",
-          errorSummary: message.slice(0, 500),
+          errorSummary: errorCode,
           finishedAt: sql`now()`,
           leaseOwner: null,
           leaseExpiresAt: null,
         })
-        .where(eq(auditRun.id, runId));
+        .where(and(
+          eq(auditRun.id, runId),
+          eq(auditRun.fenceToken, lease.fenceToken),
+        ));
       throw caught;
     } finally {
       await tracer.forceFlush().catch(() => undefined);
@@ -446,6 +533,7 @@ export class AuditRunService {
   }
 
   private async loadExemplars(ownerId: string): Promise<readonly ExemplarSnippet[]> {
+    // Stable first-N: order by fixture id then row id so selectExemplarsByCategory is reproducible.
     const rows = await this.db
       .select({
         fixtureId: goldenSetMessage.fixtureId,
@@ -458,7 +546,8 @@ export class AuditRunService {
       .where(and(
         eq(goldenSetMessage.ownerAuthUserId, ownerId),
         eq(goldenSetMessage.partition, "exemplar"),
-      ));
+      ))
+      .orderBy(goldenSetMessage.fixtureId, goldenSetMessage.id);
     return rows.map((row) => ({
       id: row.fixtureId ?? undefined,
       from: row.fromAddress,

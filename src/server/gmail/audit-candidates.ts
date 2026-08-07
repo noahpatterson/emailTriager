@@ -17,22 +17,30 @@ export type ProcessingOutcomeRow = Readonly<{
   outcome: ClassificationOutcome | "failed" | null;
 }>;
 
+export type AuditCandidateBuildResult = Readonly<{
+  candidates: readonly AuditBatchMessage[];
+  /** Snapshot ids that could not be decrypted (must not look like a clean complete run). */
+  decryptFailures: readonly string[];
+}>;
+
 /**
  * Join snapshots with processing outcomes into judge inputs.
  * Protected outcomes are omitted (no verdict). Missing snapshots / failed rows skipped.
  * Already-judged ids (resume) are omitted.
+ * Decrypt failures are reported separately so the run can mark partial_failure.
  */
 export function buildAuditCandidates(input: Readonly<{
   snapshots: readonly SnapshotRowForAudit[];
   outcomes: readonly ProcessingOutcomeRow[];
   encryptionKey: string;
   alreadyJudgedIds?: ReadonlySet<string>;
-}>): readonly AuditBatchMessage[] {
+}>): AuditCandidateBuildResult {
   const outcomeById = new Map(
     input.outcomes.map((row) => [row.gmailMessageId, row.outcome] as const),
   );
   const judged = input.alreadyJudgedIds ?? new Set<string>();
   const candidates: AuditBatchMessage[] = [];
+  const decryptFailures: string[] = [];
 
   for (const snapshot of input.snapshots) {
     if (judged.has(snapshot.gmailMessageId)) continue;
@@ -42,6 +50,7 @@ export function buildAuditCandidates(input: Readonly<{
     try {
       plaintext = decryptMessageSnapshotPayload(snapshot.encryptedPayload, input.encryptionKey);
     } catch {
+      decryptFailures.push(snapshot.gmailMessageId);
       continue;
     }
     candidates.push({
@@ -52,5 +61,5 @@ export function buildAuditCandidates(input: Readonly<{
       bodyText: plaintext.bodyText,
     });
   }
-  return candidates;
+  return { candidates, decryptFailures };
 }

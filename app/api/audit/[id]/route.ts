@@ -1,17 +1,27 @@
 import { requireOwner } from "@/src/server/auth/owner";
-import { AuditRunService } from "@/src/server/gmail/audit-run";
+import {
+  AUDIT_ERROR_CODE_SET,
+  AuditRunService,
+} from "@/src/server/gmail/audit-run";
 import { sanitizedErrorResponse } from "@/src/server/security/request";
 
 type RouteContext = Readonly<{ params: Promise<{ id: string }> }>;
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+export async function handleAuditGet(
+  _request: Request,
+  context: RouteContext,
+  service: AuditRunService = new AuditRunService(),
+): Promise<Response> {
   try {
     const owner = await requireOwner();
     const { id } = await context.params;
-    const status = await new AuditRunService().getStatus(owner.userId, id);
+    const status = await service.getStatus(owner.userId, id);
     if (!status) {
       return Response.json({ error: "Audit run not found" }, { status: 404 });
     }
+    const errorCode = status.errorSummary && AUDIT_ERROR_CODE_SET.has(status.errorSummary)
+      ? status.errorSummary
+      : (status.errorSummary ? "audit_failed" : null);
     return Response.json({
       id: status.id,
       syncRunId: status.syncRunId,
@@ -22,11 +32,15 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       modelProvider: status.modelProvider,
       modelName: status.modelName,
       promptVersionId: status.promptVersionId,
-      errorSummary: status.errorSummary,
+      errorCode,
       startedAt: status.startedAt.toISOString(),
       finishedAt: status.finishedAt?.toISOString() ?? null,
     });
   } catch {
     return sanitizedErrorResponse();
   }
+}
+
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
+  return handleAuditGet(request, context);
 }
