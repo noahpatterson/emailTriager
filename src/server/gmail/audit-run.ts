@@ -41,6 +41,14 @@ import {
   JUDGE_PROMPT_VERSION_BODY,
   promptVersionIdFor,
 } from "@/src/server/gmail/prompt-version";
+import {
+  withAuditRunSpan,
+  withJudgeSpan,
+} from "@/src/server/observability/audit-spans";
+import {
+  createAuditTracer,
+  type AuditTracer,
+} from "@/src/server/observability/tracer";
 import type { ClassificationOutcome } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
 
@@ -83,6 +91,8 @@ export type AuditRunServiceDeps = Readonly<{
   createModel?: (config: ModelRuntimeConfig) => LanguageModel;
   resolveEncryptionKey?: () => string;
   resolveModelConfig?: () => ModelRuntimeConfig;
+  /** Defaults to env-backed tracer (noop when observability unset). */
+  tracer?: AuditTracer;
 }>;
 
 function auditStatusFor(input: Readonly<{
@@ -200,8 +210,14 @@ export class AuditRunService {
     let totalEligible = 0;
     let nextCursor: string | null = null;
     let status: AuditStartResult["status"] = "failed";
+    const ownsTracer = this.deps.tracer === undefined;
+    const tracer = this.deps.tracer ?? createAuditTracer();
 
     try {
+      return await withAuditRunSpan(
+        tracer,
+        { runId, syncRunId: options.syncRunId },
+        async (runSpan) => {
       if (resumeRunId) {
         const [existing] = await this.db
           .select({
@@ -317,16 +333,20 @@ export class AuditRunService {
               },
               exemplars: exemplarsByCategory,
             });
-            const judged = await judgeMessage({
-              model,
-              system: prompt.system,
-              user: prompt.user,
-              tags: {
-                model: modelConfig.modelName,
-                provider: modelConfig.provider,
-                promptVersion: promptId,
-              },
-            });
+            const judged = await withJudgeSpan(
+              tracer,
+              { runId, gmailMessageId: message.gmailMessageId },
+              () => judgeMessage({
+                model,
+                system: prompt.system,
+                user: prompt.user,
+                tags: {
+                  model: modelConfig.modelName,
+                  provider: modelConfig.provider,
+                  promptVersion: promptId,
+                },
+              }),
+            );
             if (judged.malformed) malformedCount += 1;
             const inserted = await this.db
               .insert(verdict)
@@ -386,6 +406,8 @@ export class AuditRunService {
         })
         .where(eq(auditRun.id, runId));
 
+      runSpan.setAttribute("audit.status", status);
+
       return {
         id: runId,
         syncRunId: options.syncRunId,
@@ -395,6 +417,8 @@ export class AuditRunService {
         nextCursor,
         malformedCount,
       };
+        },
+      );
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Audit failed";
       await this.db
@@ -409,6 +433,8 @@ export class AuditRunService {
         .where(eq(auditRun.id, runId));
       throw caught;
     } finally {
+      await tracer.forceFlush().catch(() => undefined);
+      if (ownsTracer) await tracer.shutdown().catch(() => undefined);
       await this.db
         .delete(syncLease)
         .where(and(
