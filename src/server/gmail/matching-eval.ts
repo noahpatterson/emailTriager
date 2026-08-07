@@ -75,6 +75,11 @@ function emptyMatrix(): Record<Category, Record<Category, number>> {
   return matrix;
 }
 
+/** Shared with judge eval — keep matrix shape identical across Eval Run types. */
+export function emptyEvalMatrix(): Record<Category, Record<Category, number>> {
+  return emptyMatrix();
+}
+
 export function matchingEvalCost(
   ownerLabel: Category,
   predicted: Category,
@@ -139,6 +144,14 @@ function precisionRecall(
     precision: predictedAs === 0 ? null : truePositives / predictedAs,
     recall: support === 0 ? null : truePositives / support,
   };
+}
+
+/** Shared with judge eval — keep per-category metrics identical across Eval Run types. */
+export function evalPrecisionRecall(
+  matrix: ConfusionMatrix,
+  category: Category,
+): CategoryPrecisionRecall {
+  return precisionRecall(matrix, category);
 }
 
 /**
