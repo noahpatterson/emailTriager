@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
 type Category = "priority" | "review" | "new" | "archive";
 
-type ReviewItem = Readonly<{
+export type ReviewItem = Readonly<{
   verdictId: number;
   gmailMessageId: string;
   agreesWithFiling: boolean | null;
@@ -17,18 +17,18 @@ type ReviewItem = Readonly<{
   bodyExcerpt: string;
 }>;
 
-type CategoryIntent = Readonly<{
+export type CategoryIntentView = Readonly<{
   priority: string;
   review: string;
   new: string;
   archive: string;
 }>;
 
-type QueuePayload = Readonly<{
+export type ReviewQueuePayload = Readonly<{
   auditRunId: string | null;
   syncRunId: string | null;
   items: readonly ReviewItem[];
-  categoryIntent: CategoryIntent | null;
+  categoryIntent: CategoryIntentView | null;
 }>;
 
 const CATEGORY_KEYS: ReadonlyArray<{ key: string; category: Category; label: string }> = [
@@ -38,7 +38,7 @@ const CATEGORY_KEYS: ReadonlyArray<{ key: string; category: Category; label: str
   { key: "4", category: "archive", label: "4 Archive" },
 ];
 
-async function loadQueue(): Promise<QueuePayload> {
+async function loadQueue(): Promise<ReviewQueuePayload> {
   const response = await fetch("/api/review/queue", {
     method: "GET",
     credentials: "same-origin",
@@ -46,7 +46,7 @@ async function loadQueue(): Promise<QueuePayload> {
   if (!response.ok) {
     throw new Error("Could not load review queue");
   }
-  return response.json() as Promise<QueuePayload>;
+  return response.json() as Promise<ReviewQueuePayload>;
 }
 
 async function submitLabel(messageId: string, ownerLabel: Category): Promise<void> {
@@ -62,34 +62,33 @@ async function submitLabel(messageId: string, ownerLabel: Category): Promise<voi
   }
 }
 
-export function ReviewQueueClient() {
-  const [queue, setQueue] = useState<QueuePayload | null>(null);
+export function ReviewQueueClient({
+  initialQueue,
+}: {
+  initialQueue: ReviewQueuePayload;
+}) {
+  const [queue, setQueue] = useState(initialQueue);
   const [index, setIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [pending, startTransition] = useTransition();
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(() => {
     setError(null);
-    try {
-      const next = await loadQueue();
-      setQueue(next);
-      setIndex(0);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load review queue");
-    } finally {
-      setLoading(false);
-    }
+    startTransition(async () => {
+      try {
+        const next = await loadQueue();
+        setQueue(next);
+        setIndex(0);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Could not load review queue");
+      }
+    });
   }, []);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const items = queue?.items ?? [];
+  const items = queue.items;
   const current = items[index] ?? null;
-  const intent = queue?.categoryIntent;
+  const intent = queue.categoryIntent;
 
   const labelCurrent = useCallback(async (ownerLabel: Category) => {
     if (!current || busy) return;
@@ -98,7 +97,6 @@ export function ReviewQueueClient() {
     try {
       await submitLabel(current.gmailMessageId, ownerLabel);
       setQueue((prev) => {
-        if (!prev) return prev;
         const nextItems = prev.items.filter((item) => item.gmailMessageId !== current.gmailMessageId);
         return { ...prev, items: nextItems };
       });
@@ -141,15 +139,14 @@ export function ReviewQueueClient() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [items.length, labelCurrent]);
 
-  if (loading) {
-    return <section className="card review-queue"><p>Loading review queue…</p></section>;
-  }
-
-  if (!queue?.auditRunId) {
+  if (!queue.auditRunId) {
     return (
       <section className="card review-queue">
         <p>No Audit Run yet. Run a shadow audit first, then return here.</p>
-        <button type="button" className="button" onClick={() => void refresh()}>Refresh</button>
+        <button type="button" className="button" disabled={pending} onClick={refresh}>
+          {pending ? "Refreshing…" : "Refresh"}
+        </button>
+        {error ? <p className="error-text" role="alert">{error}</p> : null}
       </section>
     );
   }
@@ -158,7 +155,10 @@ export function ReviewQueueClient() {
     return (
       <section className="card review-queue">
         <p>Queue empty for the latest Audit Run. All pending items may already carry Owner Labels.</p>
-        <button type="button" className="button" onClick={() => void refresh()}>Refresh</button>
+        <button type="button" className="button" disabled={pending} onClick={refresh}>
+          {pending ? "Refreshing…" : "Refresh"}
+        </button>
+        {error ? <p className="error-text" role="alert">{error}</p> : null}
       </section>
     );
   }
@@ -222,6 +222,9 @@ export function ReviewQueueClient() {
             {entry.label}
           </button>
         ))}
+        <button type="button" className="button" disabled={pending} onClick={refresh}>
+          {pending ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
     </section>
   );

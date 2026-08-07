@@ -5,6 +5,7 @@ import { ReviewQueueClient } from "@/app/review/review-queue-client";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
 import { getSession } from "@/src/server/auth/session";
+import { ReviewService } from "@/src/server/gmail/review-service";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,8 @@ export default async function ReviewPage() {
     );
   }
 
+  const initialQueue = await new ReviewService().getQueue(userId);
+
   return (
     <main className="shell">
       <header className="hero">
@@ -42,7 +45,7 @@ export default async function ReviewPage() {
         </div>
         <Link className="back-link" href="/">← Back to Email Triage</Link>
       </header>
-      <ReviewQueueClient />
+      <ReviewQueueClient initialQueue={initialQueue} />
     </main>
   );
 }
