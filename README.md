@@ -8,6 +8,7 @@ Single-owner Gmail triage console. Deterministic local rules classify mail under
 
 - Owner-only workspace (one configured identity)
 - Local rule-based triage (no LLM in the sync path)
+- Optional post-sync **shadow audit** (`POST /api/audit`) — OpenAI judge over stored snapshots; no Gmail mutation in this path
 - Optional `APP_PROFILE=demo|ci` fixture Gmail (adversarial corpus; proves machinery, not classifier quality — see `docs/README.md`)
 - Bounded sync with run history and trial mode
 - Gmail label mutations for triage outcomes
@@ -16,6 +17,8 @@ Single-owner Gmail triage console. Deterministic local rules classify mail under
 
 - Multi-user SaaS or team inbox product
 - A send/compose client
+- Multi-provider model routing — the judge talks **OpenAI only** (OpenAI HTTP API / compatible base URL) for now
+- An owner UI for audit runs yet (API only; review UI comes later)
 - Permanent delete by default (starred mail stays protected; dangerous purge is explicit and opt-in)
 - Production-hardened infrastructure — treat it as a personal experiment
 
@@ -70,6 +73,30 @@ Keep `TOKEN_ENCRYPTION_KEY_V1` stable. Rotating it without re-connecting Gmail m
 - Prefer a dedicated test Gmail account and test labels until you trust the setup.
 
 Official Google reference: [Using OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server).
+
+---
+
+## Configure OpenAI (shadow audit judge)
+
+Sync stays rule-based. The optional **shadow audit** calls a model after a completed sync to score filings against category intent. There is **no audit UI yet** — start/resume via `POST /api/audit` and poll `GET /api/audit/:id`.
+
+**Provider support today: OpenAI only.** The app uses the OpenAI-compatible HTTP client pointed at OpenAI (or a drop-in base URL that speaks the same API). Other vendors are not wired; leave multi-provider profiles for later.
+
+**What the audit sends.** Each judged message sends the sender address, the subject, and up to 4000 characters of body text to `MODEL_BASE_URL`, together with your category intent and up to 2 exemplar messages per category. Snapshots are decrypted for the call. Do not enable audit against a mailbox whose content you cannot share with the configured provider.
+
+Required only if you run audit (not needed for sync or matching eval):
+
+```dotenv
+MODEL_NAME=gpt-4.1-mini
+MODEL_BASE_URL=https://api.openai.com/v1
+MODEL_API_KEY=sk-...
+# optional; defaults to openai-compatible
+# MODEL_PROVIDER=openai-compatible
+```
+
+`MODEL_API_KEY` may be a plaintext key or an `encryptSecret` ciphertext (`v1.…`) produced with `TOKEN_ENCRYPTION_KEY_V1`.
+
+Also required before audit: complete **category intent** on triage config for every category (priority / review / new / archive).
 
 ---
 
@@ -230,6 +257,7 @@ docker compose -f docker-compose.neon.yml up --build
 bun install --frozen-lockfile
 cp .env.example .env.local
 # fill DATABASE_*, Neon Auth, OWNER_NEON_AUTH_USER_ID, Google OAuth, TOKEN_ENCRYPTION_KEY_V1
+# optional for shadow audit: MODEL_NAME, MODEL_BASE_URL, MODEL_API_KEY (OpenAI — see above)
 bun run db:migrate
 bun run dev
 ```
