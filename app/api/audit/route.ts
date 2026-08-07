@@ -1,6 +1,7 @@
 import { requireOwner } from "@/src/server/auth/owner";
 import {
   AuditAlreadyRunningError,
+  AuditClientError,
   AuditRunService,
 } from "@/src/server/gmail/audit-run";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
@@ -31,19 +32,8 @@ export async function handleAuditPost(
       });
       return Response.json(result, { status: 200 });
     } catch (caught) {
-      if (caught instanceof AuditAlreadyRunningError) {
+      if (caught instanceof AuditAlreadyRunningError || caught instanceof AuditClientError) {
         return Response.json({ error: caught.message }, { status: 400 });
-      }
-      const message = caught instanceof Error ? caught.message : "";
-      if (
-        message.includes("Category intent")
-        || message.includes("Sync configuration")
-        || message.includes("Sync run")
-        || message.includes("Audit requires")
-        || message.includes("already running")
-        || message.includes("Invalid audit")
-      ) {
-        return Response.json({ error: message }, { status: 400 });
       }
       throw caught;
     }

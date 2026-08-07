@@ -11,7 +11,9 @@ mock.module("@/src/server/auth/owner", () => ({
 // Do not mock audit-run — that pollutes audit-run.test.ts (same module graph in bun).
 const { handleAuditPost } = await import("../../app/api/audit/route");
 const { handleAuditGet } = await import("../../app/api/audit/[id]/route");
-const { AuditAlreadyRunningError } = await import("../../src/server/gmail/audit-run");
+const { AuditAlreadyRunningError, AuditClientError } = await import(
+  "../../src/server/gmail/audit-run"
+);
 
 function postRequest(body: unknown, origin = "http://localhost:3000"): Request {
   return new Request("http://localhost:3000/api/audit", {
@@ -141,7 +143,9 @@ describe("POST /api/audit", () => {
     ownerImpl = async () => ({ userId: "owner-1" });
     const service = stubService({
       start: async () => {
-        throw new Error("Category intent is required for every category before starting an audit run");
+        throw new AuditClientError(
+          "Category intent is required for every category before starting an audit run",
+        );
       },
     });
     const response = await handleAuditPost(postRequest({ syncRunId: "sync-1" }), service);
@@ -155,7 +159,7 @@ describe("POST /api/audit", () => {
     ownerImpl = async () => ({ userId: "owner-1" });
     const service = stubService({
       start: async () => {
-        throw new Error("Audit requires a completed sync run");
+        throw new AuditClientError("Audit requires a completed sync run");
       },
     });
     const response = await handleAuditPost(postRequest({ syncRunId: "sync-1" }), service);

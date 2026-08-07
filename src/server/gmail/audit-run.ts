@@ -15,7 +15,7 @@ import {
 import { getServerConfig } from "@/src/config/server";
 import {
   asCategoryIntent,
-  assertCompleteCategoryIntent,
+  hasCompleteCategoryIntent,
 } from "@/src/server/config/triage-validate";
 import { database, type Database } from "@/src/server/db";
 import {
@@ -46,11 +46,23 @@ const AUDIT_LEASE_SECONDS = 300;
 const LEASE_RENEW_INTERVAL_MS = 60_000;
 
 /** Stable codes persisted in errorSummary — never raw driver/provider text. */
-export type AuditErrorCode =
-  | "lease_lost"
-  | "judge_transport"
-  | "decrypt_failed"
-  | "audit_failed";
+export const AUDIT_ERROR_CODES = [
+  "lease_lost",
+  "judge_transport",
+  "decrypt_failed",
+  "audit_failed",
+] as const;
+
+export type AuditErrorCode = (typeof AUDIT_ERROR_CODES)[number];
+
+export const AUDIT_ERROR_CODE_SET: ReadonlySet<string> = new Set(AUDIT_ERROR_CODES);
+
+export type AuditRunStatus =
+  | "running"
+  | "bounded_incomplete"
+  | "completed"
+  | "partial_failure"
+  | "failed";
 
 export class AuditLeaseLostError extends Error {
   readonly code = "lease_lost" as const;
@@ -64,6 +76,14 @@ export class AuditAlreadyRunningError extends Error {
   constructor() {
     super("Synchronization already running");
     this.name = "AuditAlreadyRunningError";
+  }
+}
+
+/** Owner-facing validation failures — map to HTTP 400 without message substring matching. */
+export class AuditClientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuditClientError";
   }
 }
 
@@ -89,7 +109,7 @@ export type AuditStartResult = Readonly<{
 export type AuditStatusView = Readonly<{
   id: string;
   syncRunId: string;
-  status: string;
+  status: AuditRunStatus;
   processedCount: number;
   totalEligible: number;
   nextCursor: string | null;
@@ -97,7 +117,7 @@ export type AuditStatusView = Readonly<{
   modelName: string;
   promptVersionId: string;
   /** Stable error code only — never raw internal messages. */
-  errorSummary: AuditErrorCode | string | null;
+  errorSummary: AuditErrorCode | null;
   startedAt: Date;
   finishedAt: Date | null;
 }>;
@@ -149,7 +169,14 @@ export class AuditRunService {
       .from(auditRun)
       .where(and(eq(auditRun.id, auditRunId), eq(auditRun.ownerAuthUserId, ownerId)))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    return {
+      ...row,
+      status: row.status as AuditRunStatus,
+      errorSummary: row.errorSummary && AUDIT_ERROR_CODE_SET.has(row.errorSummary)
+        ? (row.errorSummary as AuditErrorCode)
+        : (row.errorSummary ? "audit_failed" : null),
+    };
   }
 
   async start(ownerId: string, options: AuditStartOptions): Promise<AuditStartResult> {
@@ -164,9 +191,13 @@ export class AuditRunService {
       .where(eq(triageConfig.ownerAuthUserId, ownerId))
       .orderBy(desc(triageConfig.version))
       .limit(1);
-    if (!config) throw new Error("Sync configuration missing");
+    if (!config) throw new AuditClientError("Sync configuration missing");
     const categoryIntent = asCategoryIntent(config.categoryIntent);
-    assertCompleteCategoryIntent(categoryIntent);
+    if (!hasCompleteCategoryIntent(categoryIntent)) {
+      throw new AuditClientError(
+        "Category intent is required for every category before starting an audit run",
+      );
+    }
 
     const [sync] = await this.db
       .select({
@@ -176,9 +207,9 @@ export class AuditRunService {
       .from(syncRun)
       .where(and(eq(syncRun.id, options.syncRunId), eq(syncRun.ownerAuthUserId, ownerId)))
       .limit(1);
-    if (!sync) throw new Error("Sync run not found");
+    if (!sync) throw new AuditClientError("Sync run not found");
     if (sync.status !== "completed") {
-      throw new Error("Audit requires a completed sync run");
+      throw new AuditClientError("Audit requires a completed sync run");
     }
 
     let resumeRunId = options.auditRunId ?? null;
@@ -245,7 +276,7 @@ export class AuditRunService {
           .from(auditRun)
           .where(and(eq(auditRun.id, resumeRunId), eq(auditRun.ownerAuthUserId, ownerId)))
           .limit(1);
-        if (!existing) throw new Error("Invalid audit checkpoint");
+        if (!existing) throw new AuditClientError("Invalid audit checkpoint");
         await this.db
           .update(auditRun)
           .set({
@@ -355,7 +386,7 @@ export class AuditRunService {
                 from: message.from,
                 subject: message.subject,
                 bodyText: message.bodyText,
-                deterministicOutcome: message.outcome as ClassificationOutcome,
+                deterministicOutcome: message.outcome,
               },
               exemplars: exemplarsByCategory,
             });
@@ -476,6 +507,7 @@ export class AuditRunService {
   }
 
   private async loadExemplars(ownerId: string): Promise<readonly ExemplarSnippet[]> {
+    // Stable first-N: order by fixture id then row id so selectExemplarsByCategory is reproducible.
     const rows = await this.db
       .select({
         fixtureId: goldenSetMessage.fixtureId,
@@ -488,7 +520,8 @@ export class AuditRunService {
       .where(and(
         eq(goldenSetMessage.ownerAuthUserId, ownerId),
         eq(goldenSetMessage.partition, "exemplar"),
-      ));
+      ))
+      .orderBy(goldenSetMessage.fixtureId, goldenSetMessage.id);
     return rows.map((row) => ({
       id: row.fixtureId ?? undefined,
       from: row.fromAddress,

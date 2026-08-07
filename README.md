@@ -94,6 +94,8 @@ MODEL_API_KEY=sk-...
 # MODEL_PROVIDER=openai-compatible
 ```
 
+`MODEL_API_KEY` may be a plaintext key or an `encryptSecret` ciphertext (`v1.…`) produced with `TOKEN_ENCRYPTION_KEY_V1`.
+
 Also required before audit: complete **category intent** on triage config for every category (priority / review / new / archive).
 
 ---

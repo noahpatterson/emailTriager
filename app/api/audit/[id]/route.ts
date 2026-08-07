@@ -1,15 +1,11 @@
 import { requireOwner } from "@/src/server/auth/owner";
-import { AuditRunService } from "@/src/server/gmail/audit-run";
+import {
+  AUDIT_ERROR_CODE_SET,
+  AuditRunService,
+} from "@/src/server/gmail/audit-run";
 import { sanitizedErrorResponse } from "@/src/server/security/request";
 
 type RouteContext = Readonly<{ params: Promise<{ id: string }> }>;
-
-const STABLE_ERROR_CODES = new Set([
-  "lease_lost",
-  "judge_transport",
-  "decrypt_failed",
-  "audit_failed",
-]);
 
 export async function handleAuditGet(
   _request: Request,
@@ -23,7 +19,7 @@ export async function handleAuditGet(
     if (!status) {
       return Response.json({ error: "Audit run not found" }, { status: 404 });
     }
-    const errorCode = status.errorSummary && STABLE_ERROR_CODES.has(status.errorSummary)
+    const errorCode = status.errorSummary && AUDIT_ERROR_CODE_SET.has(status.errorSummary)
       ? status.errorSummary
       : (status.errorSummary ? "audit_failed" : null);
     return Response.json({
