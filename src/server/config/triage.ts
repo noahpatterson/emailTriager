@@ -3,6 +3,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { triageConfig } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import {
+  asAutoApplyPromotions,
   asBounds,
   asCategoryIntent,
   asStringArray,
@@ -42,6 +43,7 @@ export class TriageConfigService {
         senderWhitelist: triageConfig.senderWhitelist,
         senderBlocklist: triageConfig.senderBlocklist,
         categoryIntent: triageConfig.categoryIntent,
+        autoApplyPromotions: triageConfig.autoApplyPromotions,
         bounds: triageConfig.bounds,
       })
       .from(triageConfig)
@@ -60,6 +62,7 @@ export class TriageConfigService {
       senderWhitelist: asStringArray(row.senderWhitelist),
       senderBlocklist: asStringArray(row.senderBlocklist),
       categoryIntent: asCategoryIntent(row.categoryIntent),
+      autoApplyPromotions: asAutoApplyPromotions(row.autoApplyPromotions),
       bounds: asBounds(row.bounds),
     };
   }
@@ -96,6 +99,7 @@ export class TriageConfigService {
       senderWhitelist: normalized.senderWhitelist,
       senderBlocklist: normalized.senderBlocklist,
       categoryIntent: normalized.categoryIntent,
+      autoApplyPromotions: normalized.autoApplyPromotions,
       bounds: normalized.bounds,
       createdAt: sql`now()`,
     });

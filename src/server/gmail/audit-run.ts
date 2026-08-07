@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import {
+  asAutoApplyPromotions,
   asCategoryIntent,
   hasCompleteCategoryIntent,
 } from "@/src/server/config/triage-validate";
@@ -25,6 +26,9 @@ import {
   type AuditBatchMessage,
 } from "@/src/server/gmail/audit-batch";
 import { buildAuditCandidates } from "@/src/server/gmail/audit-candidates";
+import { decideAuditMutation } from "@/src/server/gmail/audit-mutation";
+import type { GmailProvider } from "@/src/server/gmail/contracts";
+import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { JudgeTransportError, judgeMessage } from "@/src/server/gmail/judge";
 import {
   assembleJudgePrompt,
@@ -32,6 +36,7 @@ import {
   selectExemplarsByCategory,
   type ExemplarSnippet,
 } from "@/src/server/gmail/judge-prompt";
+import { parseGmailMessage, type GmailMessage } from "@/src/server/gmail/message";
 import { DatabaseMessageSnapshotStore } from "@/src/server/gmail/message-snapshot-store";
 import {
   createJudgeModel,
@@ -49,6 +54,7 @@ import {
 } from "@/src/server/observability/tracer";
 import type { ClassificationOutcome } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
+import { reconcileCategoryFiling } from "@/src/server/gmail/sync";
 
 const AUDIT_LEASE_SECONDS = 300;
 const LEASE_RENEW_INTERVAL_MS = 60_000;
@@ -138,6 +144,8 @@ export type AuditRunServiceDeps = Readonly<{
   tracer?: AuditTracer;
   /** Test seam — defaults to createAuditTracer when tracer is unset. */
   createTracer?: () => AuditTracer;
+  /** Gmail provider for promotion mutations; defaults to googleProviderForOwner. */
+  providerForOwner?: (ownerId: string) => Promise<GmailProvider>;
 }>;
 
 function auditStatusFor(input: Readonly<{
@@ -198,6 +206,12 @@ export class AuditRunService {
     const [config] = await this.db
       .select({
         categoryIntent: triageConfig.categoryIntent,
+        autoApplyPromotions: triageConfig.autoApplyPromotions,
+        sourceLabelId: triageConfig.sourceLabelId,
+        priorityLabelId: triageConfig.priorityLabelId,
+        reviewLabelId: triageConfig.reviewLabelId,
+        newLabelId: triageConfig.newLabelId,
+        archiveLabelId: triageConfig.archiveLabelId,
       })
       .from(triageConfig)
       .where(eq(triageConfig.ownerAuthUserId, ownerId))
@@ -210,6 +224,14 @@ export class AuditRunService {
         "Category intent is required for every category before starting an audit run",
       );
     }
+    const autoApplyPromotions = asAutoApplyPromotions(config.autoApplyPromotions);
+    const labels = {
+      sourceLabelId: config.sourceLabelId,
+      priorityLabelId: config.priorityLabelId,
+      reviewLabelId: config.reviewLabelId,
+      newLabelId: config.newLabelId,
+      archiveLabelId: config.archiveLabelId,
+    };
 
     const [sync] = await this.db
       .select({
@@ -425,6 +447,32 @@ export class AuditRunService {
               }),
             );
             if (judged.malformed) malformedCount += 1;
+
+            const recommendedCategory = judged.recommendedCategory;
+            const decision = recommendedCategory
+              ? decideAuditMutation({
+                deterministicOutcome: message.outcome,
+                recommendedCategory,
+                autoApplyPromotions,
+                malformed: judged.malformed,
+                agreesWithFiling: judged.agreesWithFiling === true,
+              })
+              : "skip";
+
+            const assertMutationAllowed = async (): Promise<void> => {
+              const [held] = await this.db
+                .select({ fenceToken: syncLease.fenceToken })
+                .from(syncLease)
+                .where(and(
+                  eq(syncLease.ownerAuthUserId, ownerId),
+                  eq(syncLease.leaseOwner, runId),
+                  eq(syncLease.fenceToken, lease.fenceToken),
+                  sql`${syncLease.leaseExpiresAt} > now()`,
+                ))
+                .limit(1);
+              if (!held) throw new AuditLeaseLostError();
+            };
+
             const inserted = await this.db
               .insert(verdict)
               .values({
@@ -439,8 +487,65 @@ export class AuditRunService {
                 promptVersionId: judged.promptVersion,
               })
               .onConflictDoNothing()
-              .returning({ gmailMessageId: verdict.gmailMessageId });
-            if (inserted.length > 0) processedCount += 1;
+              .returning({
+                id: verdict.id,
+                gmailMessageId: verdict.gmailMessageId,
+              });
+            if (inserted.length === 0) return judged;
+
+            const verdictId = inserted[0]!.id;
+            try {
+              if (decision === "promote" && recommendedCategory) {
+                const provider = await (this.deps.providerForOwner ?? googleProviderForOwner)(ownerId);
+                const raw = await provider.getMessage(message.gmailMessageId);
+                const parsed = parseGmailMessage(raw as GmailMessage);
+                // false = starred/protected — keep verdict, skip Gmail write (ADR-0010).
+                await reconcileCategoryFiling(
+                  provider,
+                  parsed,
+                  recommendedCategory,
+                  labels,
+                  assertMutationAllowed,
+                );
+              }
+              if (decision === "pending_demotion") {
+                // Fence in the same statement so a stale run cannot enqueue after lease loss.
+                const fenced = await this.db.execute(sql`
+                  INSERT INTO pending_demotion (owner_auth_user_id, gmail_message_id, verdict_id)
+                  SELECT ${ownerId}, ${message.gmailMessageId}, ${verdictId}
+                  WHERE EXISTS (
+                    SELECT 1 FROM sync_lease
+                    WHERE owner_auth_user_id = ${ownerId}
+                      AND lease_owner = ${runId}::uuid
+                      AND fence_token = ${lease.fenceToken}
+                      AND lease_expires_at > now()
+                  )
+                  ON CONFLICT DO NOTHING
+                  RETURNING id
+                `);
+                const rowCount = Array.isArray(fenced)
+                  ? fenced.length
+                  : Number((fenced as { rowCount?: number }).rowCount ?? 0);
+                if (rowCount === 0) {
+                  const [held] = await this.db
+                    .select({ fenceToken: syncLease.fenceToken })
+                    .from(syncLease)
+                    .where(and(
+                      eq(syncLease.ownerAuthUserId, ownerId),
+                      eq(syncLease.leaseOwner, runId),
+                      eq(syncLease.fenceToken, lease.fenceToken),
+                      sql`${syncLease.leaseExpiresAt} > now()`,
+                    ))
+                    .limit(1);
+                  if (!held) throw new AuditLeaseLostError();
+                  // Lease held but conflict (open demotion already exists) — fine.
+                }
+              }
+              processedCount += 1;
+            } catch (caught) {
+              await this.db.delete(verdict).where(eq(verdict.id, verdictId));
+              throw caught;
+            }
             return judged;
           },
         });

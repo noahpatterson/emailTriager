@@ -24,6 +24,7 @@ type ConfigFormState = Readonly<{
   reviewIntent: string;
   newIntent: string;
   archiveIntent: string;
+  autoApplyPromotions: boolean;
   maxPages: string;
   maxMessagesPerPage: string;
   maxTotalMessages: string;
@@ -49,6 +50,7 @@ function toFormState(config: TriageConfigInput): ConfigFormState {
     reviewIntent: config.categoryIntent.review,
     newIntent: config.categoryIntent.new,
     archiveIntent: config.categoryIntent.archive,
+    autoApplyPromotions: config.autoApplyPromotions,
     maxPages: String(config.bounds.maxPages),
     maxMessagesPerPage: String(config.bounds.maxMessagesPerPage),
     maxTotalMessages: String(config.bounds.maxTotalMessages),
@@ -75,6 +77,7 @@ function fromFormState(form: ConfigFormState): TriageConfigInput {
       new: form.newIntent,
       archive: form.archiveIntent,
     },
+    autoApplyPromotions: form.autoApplyPromotions,
     bounds: {
       maxPages: Number(form.maxPages),
       maxMessagesPerPage: Number(form.maxMessagesPerPage),
@@ -222,6 +225,25 @@ export function ConfigurationForm({
           <p className="field-help">Exact mailbox addresses moved to archive without term matching. One address per line.</p>
           <label className="full-width" htmlFor="senderBlocklist">Blocked senders
             <textarea id="senderBlocklist" name="senderBlocklist" rows={4} value={form.senderBlocklist} onChange={(e) => updateForm("senderBlocklist", e.target.value)} disabled={pending} placeholder={"spam@example.com\nnoreply@promo.example"} />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Audit auto-apply</legend>
+          <p className="field-help">
+            When enabled, the judge may promote misfiled mail in Gmail without confirmation.
+            Demotions into archive always require your explicit confirmation. Leave off to keep audits in shadow.
+          </p>
+          <label className="full-width checkbox-row" htmlFor="autoApplyPromotions">
+            <input
+              id="autoApplyPromotions"
+              name="autoApplyPromotions"
+              type="checkbox"
+              checked={form.autoApplyPromotions}
+              onChange={(e) => updateForm("autoApplyPromotions", e.target.checked)}
+              disabled={pending}
+            />
+            Auto-apply promotions
           </label>
         </fieldset>
 
