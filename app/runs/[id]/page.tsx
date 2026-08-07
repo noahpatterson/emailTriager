@@ -8,6 +8,7 @@ import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
 import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
+import { withDemoOwnerScope } from "@/src/server/db";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { RunDetailService } from "@/src/server/gmail/run-detail";
 
@@ -31,7 +32,7 @@ export default async function RunDetailPage({
   const { data, error } = await getSession();
   const userId = data?.user?.id;
   if (error || !userId) redirect("/auth/sign-in");
-  if (userId !== config.ownerNeonAuthUserId) {
+  if (!config.demoProfile && userId !== config.ownerNeonAuthUserId) {
     return <main className="shell signed-out">
       <BrandLogo href={null} size="lg" />
       <p className="eyebrow">PRIVATE OWNER CONSOLE</p>
@@ -42,6 +43,7 @@ export default async function RunDetailPage({
     </main>;
   }
 
+  return withDemoOwnerScope(userId, async () => {
   let provider;
   try {
     provider = await googleProviderForOwner(userId);
@@ -105,4 +107,5 @@ export default async function RunDetailPage({
       />
     </section>
   </main>;
+  });
 }

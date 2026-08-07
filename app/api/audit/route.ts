@@ -4,14 +4,17 @@ import {
   AuditClientError,
   AuditRunService,
 } from "@/src/server/gmail/audit-run";
+import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
 export async function handleAuditPost(
   request: Request,
-  service: AuditRunService = new AuditRunService(),
+  service?: AuditRunService,
 ): Promise<Response> {
   try {
     requireSameOrigin(request);
+    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
+    const auditService = service ?? new AuditRunService();
     const owner = await requireOwner();
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") {
@@ -26,7 +29,7 @@ export async function handleAuditPost(
     try {
       // Work is synchronous and bounded; 200 reflects completion of this invocation
       // (not a background accept). Resume via another POST with auditRunId / nextCursor.
-      const result = await service.start(owner.userId, {
+      const result = await auditService.start(owner.userId, {
         syncRunId,
         auditRunId: auditRunId || undefined,
       });

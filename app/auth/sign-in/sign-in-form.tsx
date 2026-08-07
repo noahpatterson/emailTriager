@@ -6,12 +6,61 @@ import { continueAsLocalOwner, signIn, type SignInState } from "./actions";
 
 const initialState: SignInState = { error: null };
 
-export function SignInForm({ insecureLocalDev = false }: { insecureLocalDev?: boolean }) {
+export function SignInForm({
+  insecureLocalDev = false,
+  demoProfile = false,
+}: {
+  insecureLocalDev?: boolean;
+  demoProfile?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(signIn, initialState);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [demoError, setDemoError] = useState<string | null>(null);
   const [googlePending, startGoogle] = useTransition();
   const [localPending, startLocal] = useTransition();
-  const busy = pending || googlePending || localPending;
+  const [demoPending, setDemoPending] = useState(false);
+  const busy = pending || googlePending || localPending || demoPending;
+
+  if (demoProfile) {
+    return (
+      <div className="local-dev-sign-in">
+        <p className="inline-warning" role="status">
+          Public demo — cookie session, fixture Gmail, no Neon Auth, no model calls.
+        </p>
+        <button
+          className="button"
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setDemoError(null);
+            setDemoPending(true);
+            void (async () => {
+              try {
+                const response = await fetch("/api/demo/start", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  credentials: "same-origin",
+                });
+                if (response.status === 429) {
+                  setDemoError("Too many demo sessions from this network. Try again later.");
+                  return;
+                }
+                if (!response.ok) throw new Error();
+                window.location.assign("/");
+              } catch {
+                setDemoError("Could not start the demo. Please try again.");
+              } finally {
+                setDemoPending(false);
+              }
+            })();
+          }}
+        >
+          {demoPending ? "Starting…" : "Start demo session"}
+        </button>
+        {demoError && <p className="form-error" role="alert">{demoError}</p>}
+      </div>
+    );
+  }
 
   if (insecureLocalDev) {
     return (

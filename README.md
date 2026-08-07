@@ -166,13 +166,14 @@ Or let `docker compose -f docker-compose.neon.yml up --build` run the `migrate` 
 
 Complete [Google Gmail OAuth](#configure-google-gmail-oauth) first. Complete [Neon](#configure-neon-postgres--auth) only for path **2**.
 
-| | **1. Local insecure** | **2. Neon production** |
-|---|---|---|
-| Compose file | `docker-compose.yml` | `docker-compose.neon.yml` |
-| Database | Local Postgres in Compose | Your Neon Postgres |
-| Auth | Bypassed (“Continue as local owner”) | Neon Auth (real sign-in) |
-| App bind | `127.0.0.1:3000` | `127.0.0.1:3000` (override with `APP_HOST_BIND`) |
-| Use when | Trying the app without Neon | Running the containerized app against Neon |
+| | **1. Local insecure** | **1b. Public demo** | **2. Neon production** |
+|---|---|---|---|
+| Compose file | `docker-compose.yml` | `docker-compose.demo.yml` | `docker-compose.neon.yml` |
+| Database | Local Postgres in Compose | Local Postgres (separate volume) | Your Neon Postgres |
+| Auth | Bypassed (“Continue as local owner”) | Cookie demo session | Neon Auth (real sign-in) |
+| Gmail | Real OAuth | Fixture corpus | Real OAuth |
+| App bind | `127.0.0.1:3000` | `127.0.0.1:3000` | `127.0.0.1:3000` (override with `APP_HOST_BIND`) |
+| Use when | Trying the app without Neon | Confirming the public demo path | Running the containerized app against Neon |
 
 ### 1. Local insecure Docker build
 
@@ -200,6 +201,16 @@ bun install --frozen-lockfile
 # + Google OAuth + TOKEN_ENCRYPTION_KEY_V1
 bun run dev
 ```
+
+### 1b. Public demo Docker (local confirmation)
+
+No Neon or Google account required. Compose starts Postgres, applies production migrations, then **demo-only** migrations (`db/migrations-demo/`), and runs with `APP_PROFILE=demo`. Audit / review / demotion APIs are disabled and those pages show explainers.
+
+```sh
+docker compose -f docker-compose.demo.yml up --build
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000) → **Start demo session** → **Run sync**. Use **Clear my demo data** from the account menu to wipe the visitor. Demo migrations are never applied by production `db:migrate` (use `bun run db:migrate:demo` after prod migrate when developing without Compose).
 
 ### 2. Neon production Docker build
 

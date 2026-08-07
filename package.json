@@ -15,7 +15,9 @@
     "test": "bun test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:demo": "bun run scripts/migrate-demo.ts",
     "db:check": "bun run scripts/check-migrations.ts",
+    "db:check:demo": "bun run scripts/check-demo-migrations.ts",
     "retention:run": "bun run scripts/run-retention.ts"
   },
   "dependencies": {

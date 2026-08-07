@@ -7,7 +7,7 @@ import { ArchiveTrashPanel } from "@/app/settings/archive-trash";
 import { gmailConnection, triageConfig } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { getSession } from "@/src/server/auth/session";
-import { database } from "@/src/server/db";
+import { database, withDemoOwnerScope } from "@/src/server/db";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   const { data, error } = await getSession();
   const userId = data?.user?.id;
   if (error || !userId) redirect("/auth/sign-in");
-  if (userId !== config.ownerNeonAuthUserId) {
+  if (!config.demoProfile && userId !== config.ownerNeonAuthUserId) {
     return <main className="shell signed-out">
       <BrandLogo href={null} size="lg" />
       <p className="eyebrow">PRIVATE OWNER CONSOLE</p>
@@ -27,18 +27,19 @@ export default async function SettingsPage() {
     </main>;
   }
 
-  const db = database();
-  const [connection, configuration] = await Promise.all([
-    db.select({ ownerAuthUserId: gmailConnection.ownerAuthUserId })
-      .from(gmailConnection)
-      .where(and(eq(gmailConnection.ownerAuthUserId, userId), isNull(gmailConnection.disconnectedAt)))
-      .limit(1),
-    db.select({ version: triageConfig.version })
-      .from(triageConfig)
-      .where(eq(triageConfig.ownerAuthUserId, userId))
-      .orderBy(desc(triageConfig.version))
-      .limit(1),
-  ]);
+  return withDemoOwnerScope(userId, async () => {
+    const db = database();
+    const [connection, configuration] = await Promise.all([
+      db.select({ ownerAuthUserId: gmailConnection.ownerAuthUserId })
+        .from(gmailConnection)
+        .where(and(eq(gmailConnection.ownerAuthUserId, userId), isNull(gmailConnection.disconnectedAt)))
+        .limit(1),
+      db.select({ version: triageConfig.version })
+        .from(triageConfig)
+        .where(eq(triageConfig.ownerAuthUserId, userId))
+        .orderBy(desc(triageConfig.version))
+        .limit(1),
+    ]);
 
   return <main className="shell">
     <header className="hero">
@@ -103,4 +104,5 @@ export default async function SettingsPage() {
       configured={configuration.length > 0}
     />
   </main>;
+  });
 }

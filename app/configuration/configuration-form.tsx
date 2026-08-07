@@ -89,9 +89,11 @@ function fromFormState(form: ConfigFormState): TriageConfigInput {
 export function ConfigurationForm({
   initialConfig,
   gmailConnected,
+  demoProfile = false,
 }: {
   initialConfig: TriageConfigView | null;
   gmailConnected: boolean;
+  demoProfile?: boolean;
 }) {
   const [form, setForm] = useState<ConfigFormState>(() => toFormState(initialConfig ?? DEFAULT_TRIAGE_CONFIG));
   const [version, setVersion] = useState(initialConfig?.version ?? null);
@@ -230,10 +232,18 @@ export function ConfigurationForm({
 
         <fieldset>
           <legend>Audit auto-apply</legend>
-          <p className="field-help">
-            When enabled, the judge may promote misfiled mail in Gmail without confirmation.
-            Demotions into archive always require your explicit confirmation. Leave off to keep audits in shadow.
-          </p>
+          {demoProfile ? (
+            <p className="field-help">
+              In the single-owner app, enabling this lets the judge promote misfiled mail without
+              confirmation. Demotions into archive still require explicit confirmation. The public
+              demo does not run the judge, so auto-apply stays off here.
+            </p>
+          ) : (
+            <p className="field-help">
+              When enabled, the judge may promote misfiled mail in Gmail without confirmation.
+              Demotions into archive always require your explicit confirmation. Leave off to keep audits in shadow.
+            </p>
+          )}
           <label className="full-width checkbox-row" htmlFor="autoApplyPromotions">
             <input
               id="autoApplyPromotions"
@@ -241,7 +251,7 @@ export function ConfigurationForm({
               type="checkbox"
               checked={form.autoApplyPromotions}
               onChange={(e) => updateForm("autoApplyPromotions", e.target.checked)}
-              disabled={pending}
+              disabled={pending || demoProfile}
             />
             Auto-apply promotions
           </label>

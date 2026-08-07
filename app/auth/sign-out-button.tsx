@@ -1,11 +1,15 @@
 "use client";
 
 import { useTransition } from "react";
-import { signOutLocalOwner } from "@/app/auth/sign-in/actions";
+import { signOutDemoVisitor, signOutLocalOwner } from "@/app/auth/sign-in/actions";
 import { authClient } from "@/src/auth/client";
 
 function isInsecureLocalClient(): boolean {
   return document.body.dataset.insecureLocal === "true";
+}
+
+function isDemoClient(): boolean {
+  return document.body.dataset.demoProfile === "true";
 }
 
 export function SignOutButton({
@@ -19,6 +23,10 @@ export function SignOutButton({
 
   function onSignOut() {
     startTransition(async () => {
+      if (isDemoClient()) {
+        await signOutDemoVisitor();
+        return;
+      }
       if (isInsecureLocalClient()) {
         await signOutLocalOwner();
         return;

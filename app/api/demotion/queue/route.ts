@@ -1,14 +1,17 @@
 import { requireOwner } from "@/src/server/auth/owner";
+import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
 import { DemotionService } from "@/src/server/gmail/demotion-service";
 import { sanitizedErrorResponse } from "@/src/server/security/request";
 
 export async function handleDemotionQueueGet(
   _request: Request,
-  service: DemotionService = new DemotionService(),
+  service?: DemotionService,
 ): Promise<Response> {
   try {
+    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
+    const demotionService = service ?? new DemotionService();
     const owner = await requireOwner();
-    const queue = await service.getQueue(owner.userId);
+    const queue = await demotionService.getQueue(owner.userId);
     return Response.json(queue);
   } catch {
     return sanitizedErrorResponse();

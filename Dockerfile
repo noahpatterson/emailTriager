@@ -13,6 +13,15 @@ COPY db ./db
 ENV NODE_ENV=development
 CMD ["bun", "run", "db:migrate"]
 
+FROM oven/bun:1.3.14 AS migrate-demo
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json bun.lock drizzle.config.ts ./
+COPY db ./db
+COPY scripts/migrate-demo.ts ./scripts/migrate-demo.ts
+ENV NODE_ENV=development
+CMD ["bun", "run", "db:migrate:demo"]
+
 FROM oven/bun:1.3.14 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

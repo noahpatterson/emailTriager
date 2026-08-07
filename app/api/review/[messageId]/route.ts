@@ -1,4 +1,5 @@
 import { requireOwner } from "@/src/server/auth/owner";
+import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
 import { ReviewClientError } from "@/src/server/gmail/review-queue";
 import { ReviewService } from "@/src/server/gmail/review-service";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
@@ -10,10 +11,12 @@ type RouteContext = Readonly<{
 export async function handleReviewSubmitPost(
   request: Request,
   context: RouteContext,
-  service: ReviewService = new ReviewService(),
+  service?: ReviewService,
 ): Promise<Response> {
   try {
     requireSameOrigin(request);
+    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
+    const reviewService = service ?? new ReviewService();
     const owner = await requireOwner();
     const { messageId: rawMessageId } = await context.params;
     const messageId = decodeURIComponent(rawMessageId ?? "").trim();
@@ -26,7 +29,7 @@ export async function handleReviewSubmitPost(
     }
     const record = body as Record<string, unknown>;
     try {
-      const result = await service.submitOwnerLabel(owner.userId, messageId, record.ownerLabel);
+      const result = await reviewService.submitOwnerLabel(owner.userId, messageId, record.ownerLabel);
       return Response.json(result);
     } catch (caught) {
       if (caught instanceof ReviewClientError) {

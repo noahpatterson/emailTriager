@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BrandLogo } from "@/app/brand-logo";
-import { DemotionQueueClient } from "@/app/demotion/demotion-queue-client";
+import { DemoAiExplainer } from "@/app/demo-ai-explainer";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
 import { getSession } from "@/src/server/auth/session";
-import { DemotionService } from "@/src/server/gmail/demotion-service";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +13,37 @@ export default async function DemotionPage() {
   const { data, error } = await getSession();
   const userId = data?.user?.id;
   if (error || !userId) redirect("/auth/sign-in");
+
+  if (config.demoProfile) {
+    return (
+      <main className="shell">
+        <header className="hero">
+          <div className="brand-heading">
+            <BrandLogo size="md" />
+            <div className="brand-heading-copy">
+              <p className="eyebrow">PUBLIC DEMO</p>
+              <h1>Pending Demotions</h1>
+              <p className="lede">
+                In the single-owner app, archive demotions wait here until the owner confirms.
+              </p>
+            </div>
+          </div>
+          <div className="hero-aside">
+            <Link className="back-link" href="/review">Review queue</Link>
+            <Link className="back-link" href="/">← Back to Email Triage</Link>
+          </div>
+        </header>
+        <DemoAiExplainer title="Demotion confirmation is disabled in the demo">
+          <p>
+            The judge may promote misfiled mail automatically when auto-apply is on, but demotions
+            into archive always need explicit confirmation so the model cannot silently queue mail
+            for purge. That confirmation UI lives here in the real deployment.
+          </p>
+        </DemoAiExplainer>
+      </main>
+    );
+  }
+
   if (userId !== config.ownerNeonAuthUserId) {
     return (
       <main className="shell signed-out">
@@ -27,6 +57,8 @@ export default async function DemotionPage() {
     );
   }
 
+  const { DemotionQueueClient } = await import("@/app/demotion/demotion-queue-client");
+  const { DemotionService } = await import("@/src/server/gmail/demotion-service");
   const initialQueue = await new DemotionService().getQueue(userId);
 
   return (

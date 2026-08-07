@@ -1,0 +1,75 @@
+# Public demo stack (Postgres + APP_PROFILE=demo). No Neon Auth, no insecure-local flags.
+# Confirm locally before opening a remote demo env:
+#
+#   cp .env.demo.example .env.demo   # optional overrides
+#   docker compose -f docker-compose.demo.yml up --build
+#
+# Then open http://127.0.0.1:3000 → Start demo session → Run sync.
+# Separate volume from local-compose so the two modes do not share data.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: emailtriager
+      POSTGRES_PASSWORD: emailtriager
+      POSTGRES_DB: email_triager_demo
+    volumes:
+      - emailtriager_demo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emailtriager -d email_triager_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://emailtriager:emailtriager@db:5432/email_triager_demo
+      DATABASE_URL_UNPOOLED: postgresql://emailtriager:emailtriager@db:5432/email_triager_demo
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  migrate-demo:
+    build:
+      context: .
+      target: migrate-demo
+    environment:
+      DATABASE_URL: postgresql://emailtriager:emailtriager@db:5432/email_triager_demo
+      DATABASE_URL_UNPOOLED: postgresql://emailtriager:emailtriager@db:5432/email_triager_demo
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      APP_PROFILE: demo
+      DATABASE_DRIVER: pg
+      DATABASE_URL: postgresql://emailtriager_app:emailtriager@db:5432/email_triager_demo
+      # Placeholders — demo never calls Google or Neon Auth.
+      GOOGLE_CLIENT_ID: demo-client-id
+      GOOGLE_CLIENT_SECRET: demo-client-secret
+      GOOGLE_REDIRECT_URI: http://127.0.0.1:3000/api/oauth/google/callback
+      TOKEN_ENCRYPTION_KEY_V1: demo-only-token-key-not-a-secret!!
+      INSECURE_LOCAL_DEV: ""
+      ALLOW_INSECURE_LOCAL_DEV: ""
+      ALLOWED_CIDRS: ""
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate-demo:
+        condition: service_completed_successfully
+
+volumes:
+  emailtriager_demo_pgdata:

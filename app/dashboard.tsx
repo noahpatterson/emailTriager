@@ -7,6 +7,7 @@ import { SignOutButton } from "@/app/auth/sign-out-button";
 import { DeleteRunButton } from "@/app/delete-run-button";
 import { RunResultsList, type RunResultRow } from "@/app/run-results";
 import { formatRunTime, runMessage, type RunStatus } from "@/app/run-status";
+import { DEMO_RESET_COPY } from "@/src/server/demo/session-token";
 
 export type { RunStatus } from "@/app/run-status";
 export { formatRunTime, runMessage } from "@/app/run-status";
@@ -50,7 +51,17 @@ async function post(path: string, body?: unknown): Promise<Response> {
   });
 }
 
-function UserMenu({ user }: { user: DashboardUser }) {
+function UserMenu({
+  user,
+  demoProfile,
+  onResetDemo,
+  resetting,
+}: {
+  user: DashboardUser;
+  demoProfile?: boolean;
+  onResetDemo?: () => void;
+  resetting?: boolean;
+}) {
   const name = user.name.trim();
   const label = name || user.email || "Owner";
   return (
@@ -71,13 +82,32 @@ function UserMenu({ user }: { user: DashboardUser }) {
         <Link className="user-menu-link" href="/review" role="menuitem">Review</Link>
         <Link className="user-menu-link" href="/demotion" role="menuitem">Demotions</Link>
         <Link className="user-menu-link" href="/settings" role="menuitem">Settings</Link>
+        {demoProfile && onResetDemo ? (
+          <button
+            className="user-menu-sign-out"
+            type="button"
+            role="menuitem"
+            disabled={resetting}
+            onClick={onResetDemo}
+          >
+            {resetting ? "Clearing…" : "Clear my demo data"}
+          </button>
+        ) : null}
         <SignOutButton className="user-menu-sign-out" />
       </div>
     </details>
   );
 }
 
-export function Dashboard({ initialState, user }: { initialState: DashboardState; user: DashboardUser }) {
+export function Dashboard({
+  initialState,
+  user,
+  demoProfile = false,
+}: {
+  initialState: DashboardState;
+  user: DashboardUser;
+  demoProfile?: boolean;
+}) {
   const [state, setState] = useState(initialState);
   const [trialMode, setTrialMode] = useState(false);
   const [trialResults, setTrialResults] = useState<readonly TrialResultRow[]>([]);
@@ -86,8 +116,13 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
   const [action, setAction] = useState<ActionState>("idle");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   async function connect(): Promise<void> {
+    if (demoProfile) {
+      setNotice("Demo mailbox is already connected to the fixture corpus. Run sync when ready.");
+      return;
+    }
     setAction("connecting"); setError(null); setNotice(null);
     try {
       const response = await post("/api/oauth/google/start");
@@ -160,6 +195,10 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
   }
 
   async function disconnect(): Promise<void> {
+    if (demoProfile) {
+      setNotice("Demo sessions keep the fixture mailbox. Use Clear my demo data to wipe this visitor.");
+      return;
+    }
     if (!window.confirm("Disconnect Gmail? Saved configuration and sanitized run history will be kept.")) return;
     setAction("disconnecting"); setError(null); setNotice(null);
     try {
@@ -169,6 +208,21 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
       setNotice("Gmail disconnected. Local token material was removed.");
     } catch { setError("Gmail could not be disconnected. Please try again."); }
     finally { setAction("idle"); }
+  }
+
+  async function resetDemo(): Promise<void> {
+    if (!window.confirm(DEMO_RESET_COPY)) return;
+    setResetting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await post("/api/demo/reset");
+      if (!response.ok) throw new Error();
+      window.location.assign("/auth/sign-in");
+    } catch {
+      setError("Demo data could not be cleared. Please try again.");
+      setResetting(false);
+    }
   }
 
   const busy = action !== "idle";
@@ -181,14 +235,28 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
       <div className="brand-heading">
         <BrandLogo size="lg" />
         <div className="brand-heading-copy">
-          <p className="eyebrow">OWNER CONSOLE</p>
+          <p className="eyebrow">{demoProfile ? "PUBLIC DEMO" : "OWNER CONSOLE"}</p>
           <h1>Email Triage</h1>
-          <p className="lede">Sort a bounded set of Gmail messages with deterministic, local rules.</p>
+          <p className="lede">
+            {demoProfile
+              ? "Sort a bounded fixture mailbox with deterministic, local rules. Audit and review are explained, not executed."
+              : "Sort a bounded set of Gmail messages with deterministic, local rules."}
+          </p>
         </div>
       </div>
       <div className="hero-aside">
-        <span className={`connection ${state.connected ? "online" : "offline"}`}><i />{state.connected ? "Gmail connected" : "Gmail disconnected"}</span>
-        <UserMenu user={user} />
+        <span className={`connection ${state.connected ? "online" : "offline"}`}>
+          <i />
+          {demoProfile
+            ? (state.connected ? "Fixture mailbox ready" : "Fixture mailbox missing")
+            : (state.connected ? "Gmail connected" : "Gmail disconnected")}
+        </span>
+        <UserMenu
+          user={user}
+          demoProfile={demoProfile}
+          onResetDemo={() => void resetDemo()}
+          resetting={resetting}
+        />
       </div>
     </header>
 
@@ -200,9 +268,25 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
     <section className="grid" aria-label="Email triage controls">
       <article className="card primary-card">
         <p className="step">01 · CONNECTION</p>
-        <h2>{state.connected ? "Your Gmail account is ready" : "Connect your Gmail account"}</h2>
-        <p>{state.connected ? "Only the configured source label is read. Email bodies, attachments, and OAuth tokens are never shown here." : "Authorize read and label access for the single owner account. Email is never sent, permanently deleted, or marked read."}</p>
-        {state.connected ? <button className="button secondary" type="button" disabled={busy} onClick={disconnect}>{action === "disconnecting" ? "Disconnecting…" : "Disconnect Gmail"}</button> : <button className="button" type="button" disabled={busy} onClick={connect}>{action === "connecting" ? "Opening Google…" : "Connect Gmail"}</button>}
+        <h2>
+          {demoProfile
+            ? (state.connected ? "Fixture mailbox is ready" : "Demo mailbox missing")
+            : (state.connected ? "Your Gmail account is ready" : "Connect your Gmail account")}
+        </h2>
+        <p>
+          {demoProfile
+            ? "This session uses DeterministicGmailFake seeded from the adversarial corpus. No Google OAuth. Click sync when you want to classify."
+            : (state.connected
+              ? "Only the configured source label is read. Email bodies, attachments, and OAuth tokens are never shown here."
+              : "Authorize read and label access for the single owner account. Email is never sent, permanently deleted, or marked read.")}
+        </p>
+        {demoProfile ? (
+          <p className="field-help">Audit, review, and demotion confirmation are disabled here — open those pages for explainers.</p>
+        ) : state.connected ? (
+          <button className="button secondary" type="button" disabled={busy} onClick={disconnect}>{action === "disconnecting" ? "Disconnecting…" : "Disconnect Gmail"}</button>
+        ) : (
+          <button className="button" type="button" disabled={busy} onClick={connect}>{action === "connecting" ? "Opening Google…" : "Connect Gmail"}</button>
+        )}
       </article>
 
       <article className={`card ${!state.configured ? "" : trialMode ? "trial-card" : ""}`}>
