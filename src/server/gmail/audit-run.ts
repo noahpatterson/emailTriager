@@ -280,9 +280,10 @@ export class AuditRunService {
     let tracer: AuditTracer | undefined = this.deps.tracer;
 
     try {
-      tracer ??= (this.deps.createTracer ?? createAuditTracer)();
+      const activeTracer = tracer ?? (this.deps.createTracer ?? createAuditTracer)();
+      tracer = activeTracer;
       return await withAuditRunSpan(
-        tracer,
+        activeTracer,
         { runId, syncRunId: options.syncRunId },
         async (runSpan) => {
       if (resumeRunId) {
@@ -410,7 +411,7 @@ export class AuditRunService {
               exemplars: exemplarsByCategory,
             });
             const judged = await withJudgeSpan(
-              tracer,
+              activeTracer,
               { runId, gmailMessageId: message.gmailMessageId },
               () => judgeMessage({
                 model,
