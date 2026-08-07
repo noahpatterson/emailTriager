@@ -125,6 +125,8 @@ describe("assembleJudgePrompt", () => {
       expect(prompt.system).toContain("archive: Noise or done");
       expect(prompt.user).toContain(`from: ${row.message.from}`);
       expect(prompt.user).toContain(`subject: ${row.message.subject}`);
+      expect(prompt.user).toContain("<<<MESSAGE");
+      expect(prompt.user).toContain("MESSAGE>>>");
       expect(prompt.user).toContain(row.expectOutcomeInUser);
       expect(prompt.user).toContain("exemplar priority: real outage");
       expect(prompt.user).toContain("exemplar archive: newsletter");

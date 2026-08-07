@@ -1,5 +1,8 @@
 import { requireOwner } from "@/src/server/auth/owner";
-import { AuditRunService } from "@/src/server/gmail/audit-run";
+import {
+  AuditAlreadyRunningError,
+  AuditRunService,
+} from "@/src/server/gmail/audit-run";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
 export async function POST(request: Request): Promise<Response> {
@@ -17,12 +20,17 @@ export async function POST(request: Request): Promise<Response> {
     }
     const auditRunId = typeof record.auditRunId === "string" ? record.auditRunId.trim() : undefined;
     try {
+      // Work is synchronous and bounded; 200 reflects completion of this invocation
+      // (not a background accept). Resume via another POST with auditRunId / nextCursor.
       const result = await new AuditRunService().start(owner.userId, {
         syncRunId,
         auditRunId: auditRunId || undefined,
       });
-      return Response.json(result, { status: 202 });
+      return Response.json(result, { status: 200 });
     } catch (caught) {
+      if (caught instanceof AuditAlreadyRunningError) {
+        return Response.json({ error: caught.message }, { status: 400 });
+      }
       const message = caught instanceof Error ? caught.message : "";
       if (
         message.includes("Category intent")

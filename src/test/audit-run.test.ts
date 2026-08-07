@@ -11,7 +11,9 @@ import { assembleJudgePrompt, selectExemplarsByCategory } from "../server/gmail/
 
 mock.module("server-only", () => ({}));
 
-const { AuditRunService } = await import("../server/gmail/audit-run");
+const { AuditAlreadyRunningError, AuditLeaseLostError, AuditRunService } = await import(
+  "../server/gmail/audit-run"
+);
 
 describe("shadow audit guarantees", () => {
   test("audit batch never needs a Gmail provider — MockLanguageModel is enough", async () => {
@@ -54,6 +56,7 @@ describe("shadow audit guarantees", () => {
       exemplars: selectExemplarsByCategory([]),
     });
     expect(prompt.user).toContain("deterministic_outcome: blocked");
+    expect(prompt.user).toContain("<<<MESSAGE");
 
     const verdicts = await runAuditBatch({
       messages: [
@@ -158,21 +161,21 @@ describe("shadow audit guarantees", () => {
       },
     } as unknown as Database;
 
+    // Model config must not be required to observe lease refusal (CI flake fix).
     const service = new AuditRunService(db, {
-      resolveModelConfig: () => ({
-        provider: "mock",
-        modelName: "mock",
-        baseUrl: "http://localhost",
-        apiKey: "test",
-      }),
-      resolveEncryptionKey: () => "key",
       createModel: () => {
         throw new Error("model should not be created when lease fails");
       },
     });
 
-    await expect(service.start("owner", { syncRunId: "sync-1" })).rejects.toThrow(
-      "Synchronization already running",
+    await expect(service.start("owner", { syncRunId: "sync-1" })).rejects.toBeInstanceOf(
+      AuditAlreadyRunningError,
     );
+  });
+
+  test("AuditLeaseLostError is a stable typed code", () => {
+    const err = new AuditLeaseLostError();
+    expect(err.code).toBe("lease_lost");
+    expect(err).toBeInstanceOf(Error);
   });
 });

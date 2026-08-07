@@ -110,6 +110,33 @@ describe("runAuditBatch", () => {
     expect(verdicts.find((v) => v.gmailMessageId === "good")?.malformed).toBe(false);
   });
 
+  test("drains active workers before propagating a judge failure", async () => {
+    let finishedAfterStop = 0;
+    const messages: AuditBatchMessage[] = [
+      { gmailMessageId: "m0", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m1", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m2", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m3", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+    ];
+    await expect(runAuditBatch({
+      messages,
+      concurrency: 2,
+      judge: async (message) => {
+        if (message.gmailMessageId === "m0") {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          finishedAfterStop += 1;
+          return okVerdict("priority");
+        }
+        if (message.gmailMessageId === "m1") {
+          throw new Error("boom");
+        }
+        finishedAfterStop += 1;
+        return okVerdict("priority");
+      },
+    })).rejects.toThrow("boom");
+    expect(finishedAfterStop).toBeGreaterThanOrEqual(1);
+  });
+
   // Keep MockLanguageModel import live so the suite documents the AC seam.
   test("MockLanguageModel is available for judge integration", () => {
     expect(typeof MockLanguageModelV4).toBe("function");

@@ -19,6 +19,7 @@ export type AuditBatchVerdict = JudgeVerdictResult & Readonly<{
 /**
  * Judge non-protected messages with bounded concurrency.
  * Protected mail is skipped entirely — no verdict row (issue #17 / ADR-0010).
+ * On judge failure: stop claiming new work, drain active workers, then rethrow.
  */
 export async function runAuditBatch(input: Readonly<{
   messages: readonly AuditBatchMessage[];
@@ -29,21 +30,30 @@ export async function runAuditBatch(input: Readonly<{
   const eligible = input.messages.filter((message) => message.outcome !== "protected");
   const verdicts: AuditBatchVerdict[] = new Array(eligible.length);
   let nextIndex = 0;
+  let stopped = false;
+  let firstError: unknown;
 
   async function worker(): Promise<void> {
-    while (true) {
+    while (!stopped) {
       const index = nextIndex;
       nextIndex += 1;
       if (index >= eligible.length) return;
       const message = eligible[index]!;
-      const verdict = await input.judge(message);
-      verdicts[index] = { gmailMessageId: message.gmailMessageId, ...verdict };
+      try {
+        const verdict = await input.judge(message);
+        verdicts[index] = { gmailMessageId: message.gmailMessageId, ...verdict };
+      } catch (caught) {
+        stopped = true;
+        firstError ??= caught;
+      }
     }
   }
 
-  const workers = Array.from({ length: Math.min(concurrency, eligible.length || 1) }, () =>
-    worker(),
+  const workers = Array.from(
+    { length: Math.min(concurrency, Math.max(eligible.length, 1)) },
+    () => worker(),
   );
   await Promise.all(workers);
-  return verdicts;
+  if (firstError !== undefined) throw firstError;
+  return verdicts.filter((row): row is AuditBatchVerdict => row !== undefined);
 }

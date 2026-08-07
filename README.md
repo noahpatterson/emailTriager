@@ -82,6 +82,8 @@ Sync stays rule-based. The optional **shadow audit** calls a model after a compl
 
 **Provider support today: OpenAI only.** The app uses the OpenAI-compatible HTTP client pointed at OpenAI (or a drop-in base URL that speaks the same API). Other vendors are not wired; leave multi-provider profiles for later.
 
+**What the audit sends.** Each judged message sends the sender address, the subject, and up to 4000 characters of body text to `MODEL_BASE_URL`, together with your category intent and up to 2 exemplar messages per category. Snapshots are decrypted for the call. Do not enable audit against a mailbox whose content you cannot share with the configured provider.
+
 Required only if you run audit (not needed for sync or matching eval):
 
 ```dotenv

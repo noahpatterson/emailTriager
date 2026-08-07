@@ -17,7 +17,7 @@ function snap(id: string, from = "a@example.com") {
 
 describe("buildAuditCandidates", () => {
   test("joins snapshots with outcomes and skips protected", () => {
-    const candidates = buildAuditCandidates({
+    const { candidates, decryptFailures } = buildAuditCandidates({
       snapshots: [snap("m1"), snap("m2"), snap("m3")],
       outcomes: [
         { gmailMessageId: "m1", outcome: "priority" },
@@ -28,10 +28,11 @@ describe("buildAuditCandidates", () => {
     });
     expect(candidates.map((c) => c.gmailMessageId)).toEqual(["m1", "m3"]);
     expect(candidates.find((c) => c.gmailMessageId === "m3")?.outcome).toBe("blocked");
+    expect(decryptFailures).toEqual([]);
   });
 
   test("skips already-judged ids on resume", () => {
-    const candidates = buildAuditCandidates({
+    const { candidates } = buildAuditCandidates({
       snapshots: [snap("m1"), snap("m2")],
       outcomes: [
         { gmailMessageId: "m1", outcome: "review" },
@@ -44,7 +45,7 @@ describe("buildAuditCandidates", () => {
   });
 
   test("skips failed and missing outcomes", () => {
-    const candidates = buildAuditCandidates({
+    const { candidates } = buildAuditCandidates({
       snapshots: [snap("m1"), snap("m2"), snap("orphan")],
       outcomes: [
         { gmailMessageId: "m1", outcome: "failed" },
@@ -54,5 +55,25 @@ describe("buildAuditCandidates", () => {
     });
     expect(candidates.map((c) => c.gmailMessageId)).toEqual(["m2"]);
     expect(candidates[0]?.outcome).toBe("unmatched");
+  });
+
+  test("reports decrypt failures instead of silent omission", () => {
+    const { candidates, decryptFailures } = buildAuditCandidates({
+      snapshots: [
+        snap("ok"),
+        {
+          gmailMessageId: "bad",
+          encryptedPayload: "not-valid-ciphertext",
+          keyVersion: 1,
+        },
+      ],
+      outcomes: [
+        { gmailMessageId: "ok", outcome: "priority" },
+        { gmailMessageId: "bad", outcome: "review" },
+      ],
+      encryptionKey: KEY,
+    });
+    expect(candidates.map((c) => c.gmailMessageId)).toEqual(["ok"]);
+    expect(decryptFailures).toEqual(["bad"]);
   });
 });

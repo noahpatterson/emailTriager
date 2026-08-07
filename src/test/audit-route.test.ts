@@ -8,11 +8,19 @@ let startImpl: (ownerId: string, options: unknown) => Promise<unknown> = async (
 };
 let statusImpl: (ownerId: string, id: string) => Promise<unknown> = async () => null;
 
+class FakeAlreadyRunningError extends Error {
+  constructor() {
+    super("Synchronization already running");
+    this.name = "AuditAlreadyRunningError";
+  }
+}
+
 mock.module("@/src/server/auth/owner", () => ({
   requireOwner: () => ownerImpl(),
 }));
 
 mock.module("@/src/server/gmail/audit-run", () => ({
+  AuditAlreadyRunningError: FakeAlreadyRunningError,
   AuditRunService: class {
     start(ownerId: string, options: unknown): Promise<unknown> {
       return startImpl(ownerId, options);
@@ -52,10 +60,11 @@ describe("POST /api/audit", () => {
         totalEligible: 3,
         nextCursor: null,
         malformedCount: 0,
+        errorCode: null,
       };
     };
     const response = await POST(postRequest({ syncRunId: "sync-1" }));
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       id: "audit-1",
       syncRunId: "sync-1",
@@ -64,7 +73,46 @@ describe("POST /api/audit", () => {
       totalEligible: 3,
       nextCursor: null,
       malformedCount: 0,
+      errorCode: null,
     });
+  });
+
+  test("passes trimmed auditRunId for resume", async () => {
+    ownerImpl = async () => ({ userId: "owner-1" });
+    startImpl = async (_ownerId, options) => {
+      expect(options).toEqual({ syncRunId: "sync-1", auditRunId: "audit-1" });
+      return {
+        id: "audit-1",
+        syncRunId: "sync-1",
+        status: "completed",
+        processedCount: 1,
+        totalEligible: 1,
+        nextCursor: null,
+        malformedCount: 0,
+        errorCode: null,
+      };
+    };
+    const response = await POST(postRequest({ syncRunId: "sync-1", auditRunId: " audit-1 " }));
+    expect(response.status).toBe(200);
+  });
+
+  test("treats empty auditRunId as undefined", async () => {
+    ownerImpl = async () => ({ userId: "owner-1" });
+    startImpl = async (_ownerId, options) => {
+      expect(options).toEqual({ syncRunId: "sync-1", auditRunId: undefined });
+      return {
+        id: "audit-2",
+        syncRunId: "sync-1",
+        status: "completed",
+        processedCount: 0,
+        totalEligible: 0,
+        nextCursor: null,
+        malformedCount: 0,
+        errorCode: null,
+      };
+    };
+    const response = await POST(postRequest({ syncRunId: "sync-1", auditRunId: "" }));
+    expect(response.status).toBe(200);
   });
 
   test("rejects cross-origin with sanitized error", async () => {
@@ -126,7 +174,7 @@ describe("POST /api/audit", () => {
 });
 
 describe("GET /api/audit/:id", () => {
-  test("returns status for the owner", async () => {
+  test("returns status with stable errorCode only", async () => {
     ownerImpl = async () => ({ userId: "owner-1" });
     statusImpl = async (ownerId, id) => {
       expect(ownerId).toBe("owner-1");
@@ -134,14 +182,14 @@ describe("GET /api/audit/:id", () => {
       return {
         id: "audit-1",
         syncRunId: "sync-1",
-        status: "completed",
+        status: "partial_failure",
         processedCount: 2,
         totalEligible: 2,
-        nextCursor: null,
+        nextCursor: "m3",
         modelProvider: "mock",
         modelName: "mock-model",
         promptVersionId: "pv",
-        errorSummary: null,
+        errorSummary: "lease_lost",
         startedAt: new Date("2026-01-01T00:00:00.000Z"),
         finishedAt: new Date("2026-01-01T00:01:00.000Z"),
       };
@@ -150,9 +198,39 @@ describe("GET /api/audit/:id", () => {
       params: Promise.resolve({ id: "audit-1" }),
     });
     expect(response.status).toBe(200);
-    const body = await response.json() as { id: string; startedAt: string };
+    const body = await response.json() as {
+      id: string;
+      startedAt: string;
+      errorCode: string | null;
+      errorSummary?: string;
+    };
     expect(body.id).toBe("audit-1");
     expect(body.startedAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(body.errorCode).toBe("lease_lost");
+    expect(body.errorSummary).toBeUndefined();
+  });
+
+  test("scrubs non-stable errorSummary values", async () => {
+    ownerImpl = async () => ({ userId: "owner-1" });
+    statusImpl = async () => ({
+      id: "audit-1",
+      syncRunId: "sync-1",
+      status: "failed",
+      processedCount: 0,
+      totalEligible: 0,
+      nextCursor: null,
+      modelProvider: "mock",
+      modelName: "mock-model",
+      promptVersionId: "pv",
+      errorSummary: "Missing required server configuration: MODEL_API_KEY",
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      finishedAt: new Date("2026-01-01T00:01:00.000Z"),
+    });
+    const response = await GET(new Request("http://localhost:3000/api/audit/audit-1"), {
+      params: Promise.resolve({ id: "audit-1" }),
+    });
+    const body = await response.json() as { errorCode: string };
+    expect(body.errorCode).toBe("audit_failed");
   });
 
   test("returns 404 when missing", async () => {
