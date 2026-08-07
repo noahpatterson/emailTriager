@@ -39,6 +39,14 @@ import {
   type ModelRuntimeConfig,
 } from "@/src/server/gmail/model-config";
 import { promptVersionIdFor } from "@/src/server/gmail/prompt-version";
+import {
+  withAuditRunSpan,
+  withJudgeSpan,
+} from "@/src/server/observability/audit-spans";
+import {
+  createAuditTracer,
+  type AuditTracer,
+} from "@/src/server/observability/tracer";
 import type { ClassificationOutcome } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
 
@@ -126,6 +134,10 @@ export type AuditRunServiceDeps = Readonly<{
   createModel?: (config: ModelRuntimeConfig) => LanguageModel;
   resolveEncryptionKey?: () => string;
   resolveModelConfig?: () => ModelRuntimeConfig;
+  /** Defaults to env-backed tracer (noop when observability unset). */
+  tracer?: AuditTracer;
+  /** Test seam — defaults to createAuditTracer when tracer is unset. */
+  createTracer?: () => AuditTracer;
 }>;
 
 function auditStatusFor(input: Readonly<{
@@ -264,8 +276,16 @@ export class AuditRunService {
     let nextCursor: string | null = null;
     let status: AuditStartResult["status"] = "failed";
     let errorCode: AuditErrorCode | null = null;
+    const ownsTracer = this.deps.tracer === undefined;
+    let tracer: AuditTracer | undefined = this.deps.tracer;
 
     try {
+      const activeTracer = tracer ?? (this.deps.createTracer ?? createAuditTracer)();
+      tracer = activeTracer;
+      return await withAuditRunSpan(
+        activeTracer,
+        { runId, syncRunId: options.syncRunId },
+        async (runSpan) => {
       if (resumeRunId) {
         const [existing] = await this.db
           .select({
@@ -390,16 +410,20 @@ export class AuditRunService {
               },
               exemplars: exemplarsByCategory,
             });
-            const judged = await judgeMessage({
-              model,
-              system: prompt.system,
-              user: prompt.user,
-              tags: {
-                model: modelConfig.modelName,
-                provider: modelConfig.provider,
-                promptVersion: promptId,
-              },
-            });
+            const judged = await withJudgeSpan(
+              activeTracer,
+              { runId, gmailMessageId: message.gmailMessageId },
+              () => judgeMessage({
+                model,
+                system: prompt.system,
+                user: prompt.user,
+                tags: {
+                  model: modelConfig.modelName,
+                  provider: modelConfig.provider,
+                  promptVersion: promptId,
+                },
+              }),
+            );
             if (judged.malformed) malformedCount += 1;
             const inserted = await this.db
               .insert(verdict)
@@ -469,6 +493,8 @@ export class AuditRunService {
           eq(auditRun.fenceToken, lease.fenceToken),
         ));
 
+      runSpan.setAttribute("audit.status", status);
+
       return {
         id: runId,
         syncRunId: options.syncRunId,
@@ -479,6 +505,8 @@ export class AuditRunService {
         malformedCount,
         errorCode,
       };
+        },
+      );
     } catch (caught) {
       errorCode = asErrorCode(caught);
       await this.db
@@ -496,6 +524,10 @@ export class AuditRunService {
         ));
       throw caught;
     } finally {
+      if (tracer) {
+        await tracer.forceFlush().catch(() => undefined);
+        if (ownsTracer) await tracer.shutdown().catch(() => undefined);
+      }
       await this.db
         .delete(syncLease)
         .where(and(
