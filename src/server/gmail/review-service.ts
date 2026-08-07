@@ -31,16 +31,20 @@ import {
   parseOwnerLabel,
   ReviewClientError,
   selectReviewQueueItems,
+  takeReviewSitting,
   type ReviewQueueCandidate,
 } from "@/src/server/gmail/review-queue";
 
 export { parseOwnerLabel, ReviewClientError } from "@/src/server/gmail/review-queue";
 
-export const REVIEW_BODY_EXCERPT_CHARS = 500;
+export const REVIEW_SNAPSHOT_EXCERPT_CHARS = 500;
 
 export type ReviewQueueResponse = Readonly<{
   auditRunId: string | null;
   syncRunId: string | null;
+  /** Full stratified pending count before the sitting window. */
+  pendingCount: number;
+  /** One sitting of the stratified queue (default 20). */
   items: readonly ReviewQueueCandidate[];
   categoryIntent: CategoryIntent | null;
 }>;
@@ -53,6 +57,8 @@ export type SubmitOwnerLabelResult = Readonly<{
   created: boolean;
 }>;
 
+type CompletedAuditRun = Readonly<{ id: string; syncRunId: string }>;
+
 export class ReviewService {
   constructor(
     private readonly db: Database = database(),
@@ -64,36 +70,27 @@ export class ReviewService {
   }
 
   /**
-   * Stratified pending items from the owner's most recent Audit Run.
-   * Disagreements + ~10% agreements; page size 20; already-labeled excluded.
+   * Stratified pending items from the owner's most recent finished Audit Run.
+   * Full stratified pool is computed first (all disagreements + ~10% agreements);
+   * `items` is one sitting window over that pool.
    */
   async getQueue(
     ownerId: string,
     options: Readonly<{
       pageSize?: number;
+      offset?: number;
       agreementSampleRate?: number;
       random?: () => number;
     }> = {},
   ): Promise<ReviewQueueResponse> {
     await this.ensureOwnerBinding(ownerId);
 
-    const [latest] = await this.db
-      .select({
-        id: auditRun.id,
-        syncRunId: auditRun.syncRunId,
-      })
-      .from(auditRun)
-      .where(and(
-        eq(auditRun.ownerAuthUserId, ownerId),
-        sql`${auditRun.status} IN ('completed', 'partial_failure', 'bounded_incomplete')`,
-      ))
-      .orderBy(desc(auditRun.startedAt))
-      .limit(1);
-
+    const latest = await this.latestCompletedAuditRun(ownerId);
     if (!latest) {
       return {
         auditRunId: null,
         syncRunId: null,
+        pendingCount: 0,
         items: [],
         categoryIntent: null,
       };
@@ -126,6 +123,7 @@ export class ReviewService {
       return {
         auditRunId: latest.id,
         syncRunId: latest.syncRunId,
+        pendingCount: 0,
         items: [],
         categoryIntent,
       };
@@ -185,7 +183,7 @@ export class ReviewService {
         .filter((id): id is string => typeof id === "string"),
     );
 
-    const candidates = [];
+    const candidates: ReviewQueueCandidate[] = [];
     for (const row of verdictRows) {
       const ciphertext = snapshotById.get(row.gmailMessageId);
       const outcome = outcomeById.get(row.gmailMessageId);
@@ -206,20 +204,28 @@ export class ReviewService {
         malformed: row.malformed,
         subject: plaintext.subject,
         from: plaintext.from,
-        bodyExcerpt: truncatePromptBody(plaintext.bodyText, REVIEW_BODY_EXCERPT_CHARS),
+        messageSnapshotExcerpt: truncatePromptBody(
+          plaintext.bodyText,
+          REVIEW_SNAPSHOT_EXCERPT_CHARS,
+        ),
       });
     }
 
-    const items = selectReviewQueueItems(candidates, {
-      pageSize: options.pageSize ?? DEFAULT_REVIEW_PAGE_SIZE,
+    const stratified = selectReviewQueueItems(candidates, {
       agreementSampleRate: options.agreementSampleRate ?? DEFAULT_AGREEMENT_SAMPLE_RATE,
       alreadyLabeledIds,
       random: options.random,
     });
+    const items = takeReviewSitting(
+      stratified,
+      options.pageSize ?? DEFAULT_REVIEW_PAGE_SIZE,
+      options.offset ?? 0,
+    );
 
     return {
       auditRunId: latest.id,
       syncRunId: latest.syncRunId,
+      pendingCount: stratified.length,
       items,
       categoryIntent,
     };
@@ -227,7 +233,7 @@ export class ReviewService {
 
   /**
    * Persist Owner Label and copy frozen snapshot text into Golden Set (holdout).
-   * Idempotent for an existing sourceGmailMessageId. Never calls Gmail.
+   * Updates the label when a golden-set row already exists. Never calls Gmail.
    */
   async submitOwnerLabel(
     ownerId: string,
@@ -271,19 +277,7 @@ export class ReviewService {
       };
     }
 
-    const [latest] = await this.db
-      .select({
-        id: auditRun.id,
-        syncRunId: auditRun.syncRunId,
-      })
-      .from(auditRun)
-      .where(and(
-        eq(auditRun.ownerAuthUserId, ownerId),
-        sql`${auditRun.status} IN ('completed', 'partial_failure', 'bounded_incomplete')`,
-      ))
-      .orderBy(desc(auditRun.startedAt))
-      .limit(1);
-
+    const latest = await this.latestCompletedAuditRun(ownerId);
     if (!latest) {
       throw new ReviewClientError("No Audit Run found for review.");
     }
@@ -339,5 +333,21 @@ export class ReviewService {
       partition: "holdout",
       created: true,
     };
+  }
+
+  private async latestCompletedAuditRun(ownerId: string): Promise<CompletedAuditRun | null> {
+    const [latest] = await this.db
+      .select({
+        id: auditRun.id,
+        syncRunId: auditRun.syncRunId,
+      })
+      .from(auditRun)
+      .where(and(
+        eq(auditRun.ownerAuthUserId, ownerId),
+        sql`${auditRun.status} IN ('completed', 'partial_failure', 'bounded_incomplete')`,
+      ))
+      .orderBy(desc(auditRun.startedAt))
+      .limit(1);
+    return latest ?? null;
   }
 }

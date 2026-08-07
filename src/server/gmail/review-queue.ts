@@ -6,6 +6,7 @@ import type { Category } from "@/src/server/gmail/corpus";
 import type { ClassificationOutcome } from "@/src/server/gmail/classify";
 
 export const DEFAULT_AGREEMENT_SAMPLE_RATE = 0.1;
+/** Default sitting size — UI window; stratification itself is not truncated. */
 export const DEFAULT_REVIEW_PAGE_SIZE = 20;
 
 const OWNER_LABEL_CATEGORIES = ["priority", "review", "new", "archive"] as const satisfies readonly Category[];
@@ -37,13 +38,12 @@ export type ReviewQueueCandidate = Readonly<{
   malformed: boolean;
   subject: string;
   from: string;
-  bodyExcerpt: string;
+  messageSnapshotExcerpt: string;
 }>;
 
 export type SelectReviewQueueOptions = Readonly<{
   /** Inclusive sample rate for agreements (default 0.1). */
   agreementSampleRate?: number;
-  pageSize?: number;
   /** Messages already carrying an Owner Label — excluded from pending. */
   alreadyLabeledIds?: ReadonlySet<string>;
   /** Injected RNG in [0, 1) for deterministic tests. */
@@ -51,17 +51,14 @@ export type SelectReviewQueueOptions = Readonly<{
 }>;
 
 /**
- * Build one sitting of pending review items from Verdict candidates.
- * Stratified pool is all Disagreements then sampled agreements; pageSize
- * is the sitting window over that ordered pool (later sittings surface
- * remaining disagreements, then agreements).
+ * Stratified pending Review Queue: every Disagreement, then ~10% of agreements.
+ * Does not truncate — sitting size is applied by takeReviewSitting / the UI.
  */
 export function selectReviewQueueItems(
   candidates: readonly ReviewQueueCandidate[],
   options: SelectReviewQueueOptions = {},
 ): readonly ReviewQueueCandidate[] {
   const agreementSampleRate = options.agreementSampleRate ?? DEFAULT_AGREEMENT_SAMPLE_RATE;
-  const pageSize = options.pageSize ?? DEFAULT_REVIEW_PAGE_SIZE;
   const alreadyLabeled = options.alreadyLabeledIds ?? new Set<string>();
   const random = options.random ?? Math.random;
 
@@ -77,5 +74,16 @@ export function selectReviewQueueItems(
     (item) => item.agreesWithFiling === true && random() < agreementSampleRate,
   );
 
-  return [...disagreements, ...agreements].slice(0, pageSize);
+  return [...disagreements, ...agreements];
+}
+
+/** One sitting window over an already-stratified pending queue. */
+export function takeReviewSitting(
+  items: readonly ReviewQueueCandidate[],
+  pageSize: number = DEFAULT_REVIEW_PAGE_SIZE,
+  offset: number = 0,
+): readonly ReviewQueueCandidate[] {
+  const start = Math.max(0, offset);
+  const size = Math.max(0, pageSize);
+  return items.slice(start, start + size);
 }

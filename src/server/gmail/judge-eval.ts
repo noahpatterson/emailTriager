@@ -3,6 +3,8 @@
  * See docs/ai-features-spec.md Slice 5.
  */
 import {
+  emptyEvalMatrix,
+  evalPrecisionRecall,
   MATCHING_EVAL_CATEGORIES,
   type CategoryPrecisionRecall,
   type ConfusionMatrix,
@@ -27,34 +29,6 @@ export type JudgeEvalMetrics = Readonly<{
   perCategory: Readonly<Record<Category, CategoryPrecisionRecall>>;
 }>;
 
-function emptyMatrix(): Record<Category, Record<Category, number>> {
-  const matrix = {} as Record<Category, Record<Category, number>>;
-  for (const actual of MATCHING_EVAL_CATEGORIES) {
-    matrix[actual] = { priority: 0, review: 0, new: 0, archive: 0 };
-  }
-  return matrix;
-}
-
-function precisionRecall(
-  matrix: ConfusionMatrix,
-  category: Category,
-): CategoryPrecisionRecall {
-  const support = MATCHING_EVAL_CATEGORIES.reduce(
-    (sum, predicted) => sum + matrix[category][predicted],
-    0,
-  );
-  const predictedAs = MATCHING_EVAL_CATEGORIES.reduce(
-    (sum, actual) => sum + matrix[actual][category],
-    0,
-  );
-  const truePositives = matrix[category][category];
-  return {
-    support,
-    precision: predictedAs === 0 ? null : truePositives / predictedAs,
-    recall: support === 0 ? null : truePositives / support,
-  };
-}
-
 /**
  * Aggregate judge trials against Owner Labels on Holdout.
  * Malformed output is skipped for accuracy / confusion / disagreement denominators
@@ -62,7 +36,7 @@ function precisionRecall(
  */
 export function runJudgeEval(trials: readonly JudgeEvalTrial[]): JudgeEvalMetrics {
   const holdoutSize = trials.length;
-  const matrix = emptyMatrix();
+  const matrix = emptyEvalMatrix();
   let scored = 0;
   let correct = 0;
   let skipped = 0;
@@ -90,7 +64,7 @@ export function runJudgeEval(trials: readonly JudgeEvalTrial[]): JudgeEvalMetric
 
   const perCategory = {} as Record<Category, CategoryPrecisionRecall>;
   for (const category of MATCHING_EVAL_CATEGORIES) {
-    perCategory[category] = precisionRecall(matrix, category);
+    perCategory[category] = evalPrecisionRecall(matrix, category);
   }
 
   return {

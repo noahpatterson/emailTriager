@@ -42,7 +42,6 @@ import {
   type JudgeEvalMetrics,
   type JudgeEvalTrial,
 } from "@/src/server/gmail/judge-eval";
-import { MatchingEvalService } from "@/src/server/gmail/matching-eval-service";
 import {
   createJudgeModel,
   getModelConfig,
@@ -79,7 +78,6 @@ export type JudgeEvalRunResult = Readonly<{
 export type JudgeEvalServiceDeps = Readonly<{
   resolveModelConfig?: () => ModelRuntimeConfig;
   createModel?: (config: ModelRuntimeConfig) => LanguageModel;
-  matchingEval?: MatchingEvalService;
 }>;
 
 function parsedFromHoldout(row: Readonly<{
@@ -111,7 +109,8 @@ export class JudgeEvalService {
   }
 
   /**
-   * Seed corpus if needed, judge each Holdout row, persist Eval Run type `judge`.
+   * Judge each Holdout row, persist Eval Run type `judge`.
+   * Does not seed the Golden Set — holdout must already exist.
    */
   async run(
     ownerId: string,
@@ -122,8 +121,6 @@ export class JudgeEvalService {
     }> = {},
   ): Promise<JudgeEvalRunResult> {
     await this.ensureOwnerBinding(ownerId);
-    const matching = this.deps.matchingEval ?? new MatchingEvalService(this.db);
-    await matching.ensureCorpusGoldenSet(ownerId);
 
     const [config] = await this.db
       .select({
@@ -173,7 +170,7 @@ export class JudgeEvalService {
       .orderBy(goldenSetMessage.fixtureId, goldenSetMessage.id);
 
     if (holdout.length === 0) {
-      throw new JudgeEvalClientError("Golden Set Holdout is empty after corpus seed");
+      throw new JudgeEvalClientError("Golden Set Holdout is empty");
     }
 
     const exemplars = await this.loadExemplars(ownerId);

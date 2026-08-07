@@ -44,7 +44,7 @@ describe("judge eval service wiring", () => {
   });
 
   test("JudgeEvalClientError is distinct for route mapping", () => {
-    const error = new JudgeEvalClientError("Golden Set Holdout is empty after corpus seed");
+    const error = new JudgeEvalClientError("Golden Set Holdout is empty");
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe("JudgeEvalClientError");
     expect(JudgeEvalService).toBeTruthy();

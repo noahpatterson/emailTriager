@@ -3,6 +3,7 @@ import {
   DEFAULT_AGREEMENT_SAMPLE_RATE,
   DEFAULT_REVIEW_PAGE_SIZE,
   selectReviewQueueItems,
+  takeReviewSitting,
   type ReviewQueueCandidate,
 } from "../server/gmail/review-queue";
 
@@ -18,7 +19,7 @@ function candidate(
     malformed: false,
     subject: "Subject",
     from: "a@example.com",
-    bodyExcerpt: "body",
+    messageSnapshotExcerpt: "body",
     ...overrides,
   };
 }
@@ -47,7 +48,6 @@ describe("review queue stratification", () => {
     let calls = 0;
     const queue = selectReviewQueueItems(agreements, {
       agreementSampleRate: DEFAULT_AGREEMENT_SAMPLE_RATE,
-      // First call included, rest excluded.
       random: () => (calls++ === 0 ? 0.05 : 0.5),
     });
     expect(queue).toHaveLength(1);
@@ -83,7 +83,7 @@ describe("review queue stratification", () => {
     expect(queue.map((item) => item.gmailMessageId)).toEqual(["todo"]);
   });
 
-  test("defaults page size to 20 and truncates after stratification", () => {
+  test("keeps all disagreements in the stratified pool without truncating", () => {
     const disagreements = Array.from({ length: 25 }, (_, index) =>
       candidate({
         gmailMessageId: `d${index}`,
@@ -91,10 +91,27 @@ describe("review queue stratification", () => {
       }),
     );
     const queue = selectReviewQueueItems(disagreements, { random: () => 0 });
+    expect(queue).toHaveLength(25);
+    expect(queue[24]?.gmailMessageId).toBe("d24");
+  });
+
+  test("sitting window defaults to 20 over the stratified pool", () => {
+    const disagreements = Array.from({ length: 25 }, (_, index) =>
+      candidate({
+        gmailMessageId: `d${index}`,
+        agreesWithFiling: false,
+      }),
+    );
+    const stratified = selectReviewQueueItems(disagreements, { random: () => 0 });
+    const sitting = takeReviewSitting(stratified);
     expect(DEFAULT_REVIEW_PAGE_SIZE).toBe(20);
-    expect(queue).toHaveLength(20);
-    expect(queue[0]?.gmailMessageId).toBe("d0");
-    expect(queue[19]?.gmailMessageId).toBe("d19");
+    expect(sitting).toHaveLength(20);
+    expect(sitting[0]?.gmailMessageId).toBe("d0");
+    expect(sitting[19]?.gmailMessageId).toBe("d19");
+    const nextSitting = takeReviewSitting(stratified, DEFAULT_REVIEW_PAGE_SIZE, 20);
+    expect(nextSitting.map((item) => item.gmailMessageId)).toEqual([
+      "d20", "d21", "d22", "d23", "d24",
+    ]);
   });
 
   test("disagreements sort before sampled agreements", () => {

@@ -1,20 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import type { ClassificationOutcome } from "@/src/server/gmail/classify";
+import type { Category } from "@/src/server/gmail/corpus";
 
-type Category = "priority" | "review" | "new" | "archive";
+/** Mirrors DEFAULT_REVIEW_PAGE_SIZE — sitting window over stratified pending. */
+const REVIEW_SITTING_SIZE = 20;
 
 export type ReviewItem = Readonly<{
   verdictId: number;
   gmailMessageId: string;
   agreesWithFiling: boolean | null;
-  deterministicOutcome: string;
+  deterministicOutcome: ClassificationOutcome | "failed";
   recommendedCategory: Category | null;
   rationale: string | null;
   malformed: boolean;
   subject: string;
   from: string;
-  bodyExcerpt: string;
+  messageSnapshotExcerpt: string;
 }>;
 
 export type CategoryIntentView = Readonly<{
@@ -27,6 +30,7 @@ export type CategoryIntentView = Readonly<{
 export type ReviewQueuePayload = Readonly<{
   auditRunId: string | null;
   syncRunId: string | null;
+  pendingCount: number;
   items: readonly ReviewItem[];
   categoryIntent: CategoryIntentView | null;
 }>;
@@ -89,6 +93,7 @@ export function ReviewQueueClient({
   const items = queue.items;
   const current = items[index] ?? null;
   const intent = queue.categoryIntent;
+  const pendingBeyondSitting = Math.max(0, queue.pendingCount - items.length);
 
   const labelCurrent = useCallback(async (ownerLabel: Category) => {
     if (!current || busy) return;
@@ -98,7 +103,11 @@ export function ReviewQueueClient({
       await submitLabel(current.gmailMessageId, ownerLabel);
       setQueue((prev) => {
         const nextItems = prev.items.filter((item) => item.gmailMessageId !== current.gmailMessageId);
-        return { ...prev, items: nextItems };
+        return {
+          ...prev,
+          items: nextItems,
+          pendingCount: Math.max(0, prev.pendingCount - 1),
+        };
       });
       setIndex((prev) => {
         const remaining = items.length - 1;
@@ -154,7 +163,11 @@ export function ReviewQueueClient({
   if (items.length === 0) {
     return (
       <section className="card review-queue">
-        <p>Queue empty for the latest Audit Run. All pending items may already carry Owner Labels.</p>
+        <p>
+          {queue.pendingCount > 0
+            ? `Sitting complete — ${queue.pendingCount} pending remain. Refresh for the next sitting.`
+            : "Queue empty for the latest Audit Run. All pending items may already carry Owner Labels."}
+        </p>
         <button type="button" className="button" disabled={pending} onClick={refresh}>
           {pending ? "Refreshing…" : "Refresh"}
         </button>
@@ -168,6 +181,10 @@ export function ReviewQueueClient({
       <div className="review-queue-meta">
         <p>
           Sitting {index + 1} of {items.length}
+          {queue.pendingCount > items.length
+            ? ` · ${queue.pendingCount} pending (sitting size ${REVIEW_SITTING_SIZE})`
+            : ""}
+          {pendingBeyondSitting > 0 ? ` · +${pendingBeyondSitting} after this sitting` : ""}
           {queue.auditRunId ? ` · audit ${queue.auditRunId.slice(0, 8)}` : ""}
         </p>
         <p className="review-queue-keys">Keys: j/k navigate · 1–4 label</p>
@@ -176,10 +193,10 @@ export function ReviewQueueClient({
       {current ? (
         <div className="review-panels">
           <article className="review-panel">
-            <h2>Snapshot</h2>
+            <h2>Message Snapshot</h2>
             <p><strong>From</strong> {current.from}</p>
             <p><strong>Subject</strong> {current.subject}</p>
-            <pre className="review-excerpt">{current.bodyExcerpt}</pre>
+            <pre className="review-excerpt">{current.messageSnapshotExcerpt}</pre>
           </article>
           <article className="review-panel">
             <h2>Filing vs Verdict</h2>
