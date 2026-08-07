@@ -5,7 +5,10 @@ import {
 } from "@/src/server/gmail/audit-run";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
-export async function POST(request: Request): Promise<Response> {
+export async function handleAuditPost(
+  request: Request,
+  service: AuditRunService = new AuditRunService(),
+): Promise<Response> {
   try {
     requireSameOrigin(request);
     const owner = await requireOwner();
@@ -22,7 +25,7 @@ export async function POST(request: Request): Promise<Response> {
     try {
       // Work is synchronous and bounded; 200 reflects completion of this invocation
       // (not a background accept). Resume via another POST with auditRunId / nextCursor.
-      const result = await new AuditRunService().start(owner.userId, {
+      const result = await service.start(owner.userId, {
         syncRunId,
         auditRunId: auditRunId || undefined,
       });
@@ -47,4 +50,8 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return sanitizedErrorResponse();
   }
+}
+
+export async function POST(request: Request): Promise<Response> {
+  return handleAuditPost(request);
 }

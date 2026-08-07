@@ -11,11 +11,15 @@ const STABLE_ERROR_CODES = new Set([
   "audit_failed",
 ]);
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+export async function handleAuditGet(
+  _request: Request,
+  context: RouteContext,
+  service: AuditRunService = new AuditRunService(),
+): Promise<Response> {
   try {
     const owner = await requireOwner();
     const { id } = await context.params;
-    const status = await new AuditRunService().getStatus(owner.userId, id);
+    const status = await service.getStatus(owner.userId, id);
     if (!status) {
       return Response.json({ error: "Audit run not found" }, { status: 404 });
     }
@@ -39,4 +43,8 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
   } catch {
     return sanitizedErrorResponse();
   }
+}
+
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
+  return handleAuditGet(request, context);
 }
