@@ -68,6 +68,7 @@ function UserMenu({ user }: { user: DashboardUser }) {
           <strong>{name || "Owner"}</strong>
           <span>{user.email}</span>
         </div>
+        <Link className="user-menu-link" href="/review" role="menuitem">Review</Link>
         <Link className="user-menu-link" href="/settings" role="menuitem">Settings</Link>
         <SignOutButton className="user-menu-sign-out" />
       </div>
