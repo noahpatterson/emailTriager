@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GmailProvider, LabelChange } from "../server/gmail/contracts";
 import type { ParsedMessage } from "../server/gmail/message";
-import { reconcileLabelMovement } from "../server/gmail/sync";
+import { reconcileCategoryFiling, reconcileLabelMovement } from "../server/gmail/sync";
 
 const labels = {
   sourceLabelId: "source",
@@ -135,5 +135,45 @@ describe("safe label reconciliation", () => {
     )).rejects.toThrow("lease lost");
     expect(checks).toBe(2);
     expect(fake.mutations).toHaveLength(1);
+  });
+});
+
+describe("audit category re-filing", () => {
+  test("promotes from archive onto priority and removes archive", async () => {
+    const fake = new ReconciliationFake({});
+    await reconcileCategoryFiling(fake, message(["archive"]), "priority", labels);
+    expect(fake.mutations).toEqual([{
+      messageId: "m1",
+      addLabelIds: ["priority"],
+      removeLabelIds: ["archive"],
+    }]);
+  });
+
+  test("demotion to archive removes the previous category label", async () => {
+    const fake = new ReconciliationFake({});
+    await reconcileCategoryFiling(fake, message(["priority"]), "archive", labels);
+    expect(fake.mutations).toEqual([{
+      messageId: "m1",
+      addLabelIds: ["archive"],
+      removeLabelIds: ["priority"],
+    }]);
+  });
+
+  test("starred messages never call modifyLabels on category re-filing", async () => {
+    const fake = new ReconciliationFake({});
+    await reconcileCategoryFiling(fake, message(["archive", "STARRED"]), "priority", labels);
+    expect(fake.mutations).toEqual([]);
+  });
+
+  test("already at destination with no other managed labels is a no-op", async () => {
+    const fake = new ReconciliationFake({});
+    await expect(reconcileCategoryFiling(fake, message(["priority"]), "priority", labels)).resolves.toBe(true);
+    expect(fake.mutations).toEqual([]);
+  });
+
+  test("starred category re-filing reports not applied", async () => {
+    const fake = new ReconciliationFake({});
+    await expect(reconcileCategoryFiling(fake, message(["archive", "STARRED"]), "priority", labels)).resolves.toBe(false);
+    expect(fake.mutations).toEqual([]);
   });
 });

@@ -9,6 +9,7 @@ import {
   triageConfig,
 } from "@/db/schema";
 import type { Database } from "@/src/server/db";
+import type { Category } from "@/src/server/gmail/corpus";
 import type { GmailProvider } from "./contracts";
 import {
   classifyWithReason,
@@ -99,6 +100,71 @@ export function destinationFor(outcome: ClassificationOutcome, labels: LabelConf
   if (outcome === "new") return labels.newLabelId;
   if (outcome === "blocked" || outcome === "unmatched") return labels.archiveLabelId;
   return null;
+}
+
+/** Map a judge Category onto the configured Gmail destination label. */
+export function destinationLabelForCategory(
+  category: Category,
+  labels: LabelConfiguration,
+): string {
+  if (category === "priority") return labels.priorityLabelId;
+  if (category === "review") return labels.reviewLabelId;
+  if (category === "new") return labels.newLabelId;
+  return labels.archiveLabelId;
+}
+
+function managedTriageLabelIds(labels: LabelConfiguration): readonly string[] {
+  return [
+    labels.sourceLabelId,
+    labels.priorityLabelId,
+    labels.reviewLabelId,
+    labels.newLabelId,
+    labels.archiveLabelId,
+  ];
+}
+
+/**
+ * Re-file an already-triaged message onto a Category label.
+ * Adds the destination and removes other app-managed triage labels in one modifyLabels call.
+ * Same fence/retry semantics as reconcileLabelMovement (source→destination sync path).
+ * @returns true when the destination label is present after the attempt (or already was).
+ */
+export async function reconcileCategoryFiling(
+  provider: GmailProvider,
+  message: ParsedMessage,
+  category: Category,
+  labels: LabelConfiguration,
+  assertMutationAllowed: () => Promise<void> = async () => {},
+): Promise<boolean> {
+  if (isGmailStarred(message.labelIds)) return false;
+  const destination = destinationLabelForCategory(category, labels);
+  const managed = managedTriageLabelIds(labels);
+  let current = message;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const currentLabels = new Set(current.labelIds);
+    const addLabelIds = currentLabels.has(destination) ? [] : [destination];
+    const removeLabelIds = managed.filter((id) => id !== destination && currentLabels.has(id));
+    if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
+      return currentLabels.has(destination);
+    }
+    try {
+      await assertMutationAllowed();
+      await provider.modifyLabels({
+        messageId: message.id,
+        addLabelIds,
+        removeLabelIds,
+      });
+      return true;
+    } catch (error) {
+      current = parseGmailMessage(await provider.getMessage(message.id) as GmailMessage);
+      const refreshed = new Set(current.labelIds);
+      const stillNeedsAdd = !refreshed.has(destination);
+      const stillNeedsRemove = managed.some((id) => id !== destination && refreshed.has(id));
+      if (!stillNeedsAdd && !stillNeedsRemove) return true;
+      if (attempt === 1) throw error;
+    }
+  }
+  return false;
 }
 
 function validateLabels(labels: LabelConfiguration): void {

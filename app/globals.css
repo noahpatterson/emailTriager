@@ -121,6 +121,8 @@ footer { display:flex; justify-content:space-between; color:var(--muted); font-s
 .bounds-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .config-form label{display:grid;gap:7px;font-size:13px;font-weight:800;color:var(--ink)}
 .config-form label.full-width{margin-top:12px}
+.config-form label.checkbox-row{display:flex;align-items:center;gap:10px;font-weight:700;margin-top:12px}
+.config-form label.checkbox-row input{width:18px;height:18px;accent-color:var(--green);margin:0}
 .config-form input,.config-form textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:11px 12px;font:inherit;font-weight:500}
 .config-form textarea{resize:vertical;min-height:110px;line-height:1.45}
 .config-form input:focus,.config-form textarea:focus{outline:3px solid #f0c84f;outline-offset:2px}

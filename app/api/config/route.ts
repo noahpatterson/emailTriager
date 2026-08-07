@@ -43,6 +43,7 @@ function parseBody(body: unknown): TriageConfigInput | null {
     senderWhitelist: asStringArray(record.senderWhitelist),
     senderBlocklist: asStringArray(record.senderBlocklist),
     categoryIntent: asCategoryIntent(record.categoryIntent),
+    autoApplyPromotions: record.autoApplyPromotions === true,
     bounds,
   };
 }

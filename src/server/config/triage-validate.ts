@@ -29,6 +29,8 @@ export type TriageConfigInput = Readonly<{
   senderWhitelist: readonly string[];
   senderBlocklist: readonly string[];
   categoryIntent: CategoryIntent;
+  /** When true, audit promotions apply Gmail label changes without confirmation. */
+  autoApplyPromotions: boolean;
   bounds: SyncBounds;
 }>;
 
@@ -51,6 +53,7 @@ export const DEFAULT_TRIAGE_CONFIG: TriageConfigInput = {
   senderWhitelist: [],
   senderBlocklist: [],
   categoryIntent: EMPTY_CATEGORY_INTENT,
+  autoApplyPromotions: false,
   bounds: { maxPages: 3, maxMessagesPerPage: 50, maxTotalMessages: 100 },
 };
 
@@ -153,6 +156,7 @@ export function normalizeTriageConfig(input: TriageConfigInput): TriageConfigInp
     senderWhitelist: validateSenderWhitelist(input.senderWhitelist),
     senderBlocklist: validateSenderBlocklist(input.senderBlocklist),
     categoryIntent: validateCategoryIntent(input.categoryIntent),
+    autoApplyPromotions: input.autoApplyPromotions === true,
     bounds: validateBounds(input.bounds),
   };
 }
@@ -192,4 +196,9 @@ export function asBounds(value: unknown): SyncBounds {
     maxMessagesPerPage: typeof record.maxMessagesPerPage === "number" ? record.maxMessagesPerPage : DEFAULT_TRIAGE_CONFIG.bounds.maxMessagesPerPage,
     maxTotalMessages: typeof record.maxTotalMessages === "number" ? record.maxTotalMessages : DEFAULT_TRIAGE_CONFIG.bounds.maxTotalMessages,
   };
+}
+
+/** Coerce DB/JSON values; missing or non-boolean → false (default off). */
+export function asAutoApplyPromotions(value: unknown): boolean {
+  return value === true;
 }

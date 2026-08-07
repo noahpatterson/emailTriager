@@ -72,6 +72,8 @@ export const triageConfig = pgTable(
     senderBlocklist: jsonb("sender_blocklist").notNull().default([]),
     // No DB/schema default after migration backfill — writers must supply categoryIntent.
     categoryIntent: jsonb("category_intent").notNull(),
+    /** Audit promotions apply without confirmation when true; default off (shadow). */
+    autoApplyPromotions: boolean("auto_apply_promotions").notNull().default(false),
     bounds: jsonb("bounds").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -295,8 +297,9 @@ export const promptVersion = pgTable(
 );
 
 /**
- * Post-sync shadow adjudication over Message Snapshots.
- * Reuses sync_lease for mutual exclusion with sync/purge; never mutates Gmail in Slice 4.
+ * Post-sync adjudication over Message Snapshots.
+ * Reuses sync_lease for mutual exclusion with sync/purge.
+ * May apply promotions when auto_apply_promotions is enabled; demotions queue for confirmation.
  */
 export const auditRun = pgTable(
   "audit_run",
@@ -366,3 +369,29 @@ export const verdict = pgTable(
     index("verdict_audit_run_idx").on(table.auditRunId),
   ],
 );
+
+/**
+ * Demotion into archive queued for owner confirmation (ADR-0010).
+ * confirmed_at null = still pending; confirm applies Gmail archive filing.
+ */
+export const pendingDemotion = pgTable(
+  "pending_demotion",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    ownerAuthUserId: text("owner_auth_user_id")
+      .notNull()
+      .references(() => ownerBinding.authUserId),
+    gmailMessageId: text("gmail_message_id").notNull(),
+    verdictId: bigint("verdict_id", { mode: "number" })
+      .notNull()
+      .references(() => verdict.id, { onDelete: "cascade" }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("pending_demotion_verdict_id_unique").on(table.verdictId),
+    index("pending_demotion_owner_pending_idx").on(table.ownerAuthUserId, table.confirmedAt),
+    index("pending_demotion_owner_message_idx").on(table.ownerAuthUserId, table.gmailMessageId),
+  ],
+);
+

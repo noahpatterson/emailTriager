@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  asAutoApplyPromotions,
   asCategoryIntent,
   assertCompleteCategoryIntent,
   EMPTY_CATEGORY_INTENT,
@@ -52,6 +53,7 @@ describe("triage configuration validation", () => {
         new: " First contact ",
         archive: " Noise ",
       },
+      autoApplyPromotions: true,
       bounds: { maxPages: 2, maxMessagesPerPage: 25, maxTotalMessages: 40 },
     });
     expect(config.sourceLabelId).toBe("Label_src");
@@ -65,6 +67,7 @@ describe("triage configuration validation", () => {
       new: "First contact",
       archive: "Noise",
     });
+    expect(config.autoApplyPromotions).toBe(true);
     expect(validateBounds(config.bounds)).toEqual(config.bounds);
     expect(validateSenderWhitelist(["a@b.co"])).toEqual(["a@b.co"]);
     expect(validateSenderBlocklist(["c@d.co"])).toEqual(["c@d.co"]);
@@ -81,9 +84,20 @@ describe("triage configuration validation", () => {
       senderWhitelist: [],
       senderBlocklist: [],
       categoryIntent: EMPTY_CATEGORY_INTENT,
+      autoApplyPromotions: false,
       bounds: { maxPages: 2, maxMessagesPerPage: 25, maxTotalMessages: 40 },
     });
     expect(config.categoryIntent).toEqual(EMPTY_CATEGORY_INTENT);
+    expect(config.autoApplyPromotions).toBe(false);
+  });
+
+  test("auto_apply_promotions defaults off and only accepts true", () => {
+    expect(asAutoApplyPromotions(undefined)).toBe(false);
+    expect(asAutoApplyPromotions(null)).toBe(false);
+    expect(asAutoApplyPromotions(false)).toBe(false);
+    expect(asAutoApplyPromotions("true")).toBe(false);
+    expect(asAutoApplyPromotions(1)).toBe(false);
+    expect(asAutoApplyPromotions(true)).toBe(true);
   });
 
   test("rejects category intent over the character limit", () => {
