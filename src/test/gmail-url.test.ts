@@ -19,6 +19,8 @@ describe("gmailMessageUrl", () => {
       .toBe("https://mail.google.com/mail/u/0/#all/thread99");
     expect(gmailMessageUrl({ gmailMessageId: "m1", gmailThreadId: null }))
       .toBe("https://mail.google.com/mail/u/0/#all/m1");
+    expect(gmailMessageUrl({ gmailMessageId: "m1", gmailThreadId: "   " }))
+      .toBe("https://mail.google.com/mail/u/0/#all/m1");
   });
 
   test("normalizes a missing trailing slash on the root", () => {

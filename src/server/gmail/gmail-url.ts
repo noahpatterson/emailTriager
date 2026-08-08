@@ -17,7 +17,8 @@ export function gmailMessageUrl(
   row: Readonly<{ gmailMessageId: string; gmailThreadId: string | null }>,
   linkRoot: string = DEFAULT_GMAIL_MESSAGE_LINK_ROOT,
 ): string {
-  const id = (row.gmailThreadId || row.gmailMessageId).trim();
+  const threadId = row.gmailThreadId?.trim() || "";
+  const id = (threadId || row.gmailMessageId).trim();
   return `${normalizeLinkRoot(linkRoot)}#all/${encodeURIComponent(id)}`;
 }
 

@@ -156,17 +156,21 @@ export class DemotionService {
           from = payload.from;
           bodyExcerpt = truncatePromptBody(payload.bodyText, DEMOTION_SNAPSHOT_EXCERPT_CHARS);
           if (terms) {
-            const match = findClassificationMatch(
-              {
-                from: payload.from,
-                replyTo: payload.replyTo,
-                subject: payload.subject,
-                bodyText: payload.bodyText,
-              },
-              terms,
-            );
-            matchedTerm = match?.term ?? null;
-            classifierMatchSnippet = match?.excerpt ?? null;
+            try {
+              const match = findClassificationMatch(
+                {
+                  from: payload.from,
+                  replyTo: payload.replyTo,
+                  subject: payload.subject,
+                  bodyText: payload.bodyText,
+                },
+                terms,
+              );
+              matchedTerm = match?.term ?? null;
+              classifierMatchSnippet = match?.excerpt ?? null;
+            } catch {
+              // Bad stored terms must not blank the snapshot fields already assigned.
+            }
           }
         } catch {
           // Snapshot decrypt failure — still list the row with empty excerpt.

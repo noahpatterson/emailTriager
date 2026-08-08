@@ -20,9 +20,9 @@ import {
 import { database, type Database } from "@/src/server/db";
 import {
   classifyWithReason,
-  findClassificationMatch,
   formatMatchEvidence,
   type ClassificationTerms,
+  type TermMatchEvidence,
 } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
 import {
@@ -194,6 +194,7 @@ export class JudgeEvalService {
 
     const batchMessages: AuditBatchMessage[] = [];
     const ownerLabelByMessageId = new Map<string, Category>();
+    const matchByMessageId = new Map<string, TermMatchEvidence>();
 
     for (const row of holdout) {
       const parsed = parsedFromHoldout({
@@ -202,10 +203,9 @@ export class JudgeEvalService {
         subject: row.subject,
         bodyText: row.bodyText,
       });
-      const { outcome } = classifyWithReason(parsed, terms, whitelist, blocklist);
+      const { outcome, match } = classifyWithReason(parsed, terms, whitelist, blocklist);
       if (outcome === "protected" || outcome === "blocked" || outcome === "unmatched") continue;
-      // Same keyword gate as shadow audit: no term ⇒ nothing for the snippet-only judge.
-      if (!findClassificationMatch(parsed, terms)) continue;
+      if (!match) continue;
       batchMessages.push({
         gmailMessageId: parsed.id,
         outcome,
@@ -215,6 +215,7 @@ export class JudgeEvalService {
         bodyText: row.bodyText,
       });
       ownerLabelByMessageId.set(parsed.id, row.ownerLabel as Category);
+      matchByMessageId.set(parsed.id, match);
     }
 
     if (batchMessages.length === 0) {
@@ -225,15 +226,7 @@ export class JudgeEvalService {
       messages: batchMessages,
       concurrency: options.concurrency ?? DEFAULT_AUDIT_CONCURRENCY,
       judge: async (message) => {
-        const match = findClassificationMatch(
-          {
-            from: message.from,
-            replyTo: message.replyTo,
-            subject: message.subject,
-            bodyText: message.bodyText,
-          },
-          terms,
-        );
+        const match = matchByMessageId.get(message.gmailMessageId) ?? null;
         const prompt = assembleJudgePrompt({
           categoryIntent,
           message: {

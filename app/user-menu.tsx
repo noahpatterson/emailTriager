@@ -16,14 +16,14 @@ export function UserMenu({ user }: { user: OwnerUser }) {
           {name ? <small>{user.email}</small> : null}
         </span>
       </summary>
-      <div className="user-menu-panel" role="menu">
+      <div className="user-menu-panel">
         <div className="user-menu-current">
           <p>Signed in as</p>
           <strong>{name || "Owner"}</strong>
           <span>{user.email}</span>
         </div>
-        <Link className="user-menu-link" href="/configuration" role="menuitem">Configuration</Link>
-        <Link className="user-menu-link" href="/settings" role="menuitem">Settings</Link>
+        <Link className="user-menu-link" href="/configuration">Configuration</Link>
+        <Link className="user-menu-link" href="/settings">Settings</Link>
         <SignOutButton className="user-menu-sign-out" />
       </div>
     </details>

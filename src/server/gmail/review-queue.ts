@@ -70,6 +70,15 @@ export type SelectReviewQueueOptions = Readonly<{
   random?: () => number;
 }>;
 
+export function isPendingReviewCandidate(
+  item: ReviewQueueCandidate,
+  alreadyLabeled: ReadonlySet<string> = new Set(),
+): boolean {
+  return !item.malformed
+    && !alreadyLabeled.has(item.gmailMessageId)
+    && item.agreesWithFiling !== null;
+}
+
 /**
  * Fixed-size ~rate sample of agreements (not independent Bernoulli).
  * Always keeps at least one when any unlabeled agreements exist — small audits
@@ -117,12 +126,7 @@ export function selectReviewQueueItems(
   const alreadyLabeled = options.alreadyLabeledIds ?? new Set<string>();
   const random = options.random ?? Math.random;
 
-  const pending = candidates.filter(
-    (item) =>
-      !item.malformed
-      && !alreadyLabeled.has(item.gmailMessageId)
-      && item.agreesWithFiling !== null,
-  );
+  const pending = candidates.filter((item) => isPendingReviewCandidate(item, alreadyLabeled));
 
   const disagreements = pending.filter((item) => item.agreesWithFiling === false);
   const agreements = pending.filter((item) => item.agreesWithFiling === true);

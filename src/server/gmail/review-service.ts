@@ -43,6 +43,7 @@ import { reconcileCategoryFiling } from "@/src/server/gmail/sync";
 import {
   DEFAULT_AGREEMENT_SAMPLE_RATE,
   DEFAULT_REVIEW_PAGE_SIZE,
+  isPendingReviewCandidate,
   parseOwnerLabel,
   parseReviewQueueMode,
   ReviewClientError,
@@ -269,7 +270,9 @@ export class ReviewService {
         continue;
       }
       const threadId = processing.gmailThreadId?.trim() || null;
-      const match = terms
+      const outcome = processing.outcome as ClassificationOutcome | "failed";
+      const matchable = outcome === "priority" || outcome === "review" || outcome === "new";
+      const match = terms && matchable
         ? findClassificationMatch(
           {
             from: plaintext.from,
@@ -289,7 +292,7 @@ export class ReviewService {
           linkRoot,
         ),
         agreesWithFiling: row.agreesWithFiling,
-        deterministicOutcome: processing.outcome as ClassificationOutcome | "failed",
+        deterministicOutcome: outcome,
         outcomeReason: processing.outcomeReason?.trim() || null,
         matchedTerm: match?.term ?? null,
         classifierMatchSnippet: match?.excerpt ?? null,
@@ -306,10 +309,7 @@ export class ReviewService {
     }
 
     const unlabeledCount = candidates.filter(
-      (item) =>
-        !item.malformed
-        && !alreadyLabeledIds.has(item.gmailMessageId)
-        && item.agreesWithFiling !== null,
+      (item) => isPendingReviewCandidate(item, alreadyLabeledIds),
     ).length;
 
     const stratified = selectReviewQueueItems(candidates, {
@@ -430,6 +430,85 @@ export class ReviewService {
 
     let gmailApplied = false;
     try {
+      const [existing] = await this.db
+        .select({
+          id: goldenSetMessage.id,
+          ownerLabel: goldenSetMessage.ownerLabel,
+        })
+        .from(goldenSetMessage)
+        .where(
+          and(
+            eq(goldenSetMessage.ownerAuthUserId, ownerId),
+            eq(goldenSetMessage.sourceGmailMessageId, messageId),
+          ),
+        )
+        .limit(1);
+
+      let goldenSetId: number;
+      let created: boolean;
+      if (existing) {
+        if (existing.ownerLabel !== ownerLabel) {
+          await this.db
+            .update(goldenSetMessage)
+            .set({ ownerLabel })
+            .where(eq(goldenSetMessage.id, existing.id));
+        }
+        goldenSetId = existing.id;
+        created = false;
+      } else {
+        const latest = await this.latestCompletedAuditRun(ownerId);
+        if (!latest) {
+          throw new ReviewClientError("No Audit Run found for review.");
+        }
+
+        const [snapshot] = await this.db
+          .select({
+            encryptedPayload: messageSnapshot.encryptedPayload,
+          })
+          .from(messageSnapshot)
+          .where(
+            and(
+              eq(messageSnapshot.ownerAuthUserId, ownerId),
+              eq(messageSnapshot.runId, latest.syncRunId),
+              eq(messageSnapshot.gmailMessageId, messageId),
+            ),
+          )
+          .limit(1);
+
+        if (!snapshot) {
+          throw new ReviewClientError("Message Snapshot not found for review.");
+        }
+
+        let plaintext;
+        try {
+          plaintext = decryptMessageSnapshotPayload(snapshot.encryptedPayload, this.encryptionKey);
+        } catch {
+          throw new ReviewClientError("Message Snapshot could not be decrypted.");
+        }
+
+        const inserted = await this.db
+          .insert(goldenSetMessage)
+          .values({
+            ownerAuthUserId: ownerId,
+            sourceGmailMessageId: messageId,
+            fixtureId: null,
+            fromAddress: plaintext.from,
+            subject: plaintext.subject,
+            bodyText: plaintext.bodyText,
+            ownerLabel,
+            partition: "holdout",
+          })
+          .returning({ id: goldenSetMessage.id });
+
+        const row = inserted[0];
+        if (!row) {
+          throw new ReviewClientError("Failed to persist Owner Label.");
+        }
+        goldenSetId = row.id;
+        created = true;
+      }
+
+      // Gmail last — measurement is already durable if re-file fails.
       const provider = await this.providerForOwner(ownerId);
       const raw = await provider.getMessage(messageId);
       const parsed = parseGmailMessage(raw as GmailMessage);
@@ -464,92 +543,12 @@ export class ReviewService {
           isNull(pendingDemotion.cancelledAt),
         ));
 
-      const [existing] = await this.db
-        .select({
-          id: goldenSetMessage.id,
-          ownerLabel: goldenSetMessage.ownerLabel,
-        })
-        .from(goldenSetMessage)
-        .where(
-          and(
-            eq(goldenSetMessage.ownerAuthUserId, ownerId),
-            eq(goldenSetMessage.sourceGmailMessageId, messageId),
-          ),
-        )
-        .limit(1);
-
-      if (existing) {
-        if (existing.ownerLabel !== ownerLabel) {
-          await this.db
-            .update(goldenSetMessage)
-            .set({ ownerLabel })
-            .where(eq(goldenSetMessage.id, existing.id));
-        }
-        return {
-          gmailMessageId: messageId,
-          ownerLabel,
-          goldenSetId: existing.id,
-          partition: "holdout",
-          created: false,
-          gmailApplied,
-        };
-      }
-
-      const latest = await this.latestCompletedAuditRun(ownerId);
-      if (!latest) {
-        throw new ReviewClientError("No Audit Run found for review.");
-      }
-
-      const [snapshot] = await this.db
-        .select({
-          encryptedPayload: messageSnapshot.encryptedPayload,
-        })
-        .from(messageSnapshot)
-        .where(
-          and(
-            eq(messageSnapshot.ownerAuthUserId, ownerId),
-            eq(messageSnapshot.runId, latest.syncRunId),
-            eq(messageSnapshot.gmailMessageId, messageId),
-          ),
-        )
-        .limit(1);
-
-      if (!snapshot) {
-        throw new ReviewClientError("Message Snapshot not found for review.");
-      }
-
-      let plaintext;
-      try {
-        plaintext = decryptMessageSnapshotPayload(snapshot.encryptedPayload, this.encryptionKey);
-      } catch {
-        throw new ReviewClientError("Message Snapshot could not be decrypted.");
-      }
-
-      const inserted = await this.db
-        .insert(goldenSetMessage)
-        .values({
-          ownerAuthUserId: ownerId,
-          sourceGmailMessageId: messageId,
-          fixtureId: null,
-          fromAddress: plaintext.from,
-          subject: plaintext.subject,
-          bodyText: plaintext.bodyText,
-          ownerLabel,
-          partition: "holdout",
-        })
-        .returning({ id: goldenSetMessage.id });
-
-      const row = inserted[0];
-      if (!row) {
-        throw new ReviewClientError("Failed to persist Owner Label.");
-      }
-
       return {
         gmailMessageId: messageId,
         ownerLabel,
-        goldenSetId: row.id,
+        goldenSetId,
         partition: "holdout",
-        created: true,
+        created,
         gmailApplied,
       };
     } finally {

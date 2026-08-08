@@ -125,7 +125,7 @@ Delivery is sequenced in nine slices (Slice 1 before Slice 0 per current plan). 
 ### Deferred (explicitly not in initial delivery)
 
 69. As an owner, I want audit runs to auto-chain after sync completion — *deferred (D-1); manual trigger first*.
-70. As an owner, I want my review verdict to re-file mail and stick — *deferred (D-2)*.
+70. As an owner, I want a sticky owner verdict that suppresses later audit mutations on that message — *deferred (D-2); re-file on review already ships (story 30)*.
 71. As an operator, I want Phoenix and Braintrust exporters alongside Langfuse — *deferred (D-3); Langfuse first*.
 72. As an owner, I want inline judging inside sync — *deferred, leaning rejected (D-4)*.
 73. As an operator, I want an AWS ECS/Lambda deployment via CDK — *deferred (D-5)*.

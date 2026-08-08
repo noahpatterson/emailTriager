@@ -1,5 +1,7 @@
 # Human review records ground truth and re-files in Gmail
 
+> Filename retained as `0004-human-review-is-measurement-only.md` for stable ADR links; the decision below supersedes the original “measurement-only” title.
+
 Reviewing a verdict records an **Owner Label** into the Golden Set (holdout) **and** applies that category’s Gmail label via the same re-file path used for promotions and confirmed demotions. The owner’s button press is the authoritative filing: measurement and mailbox stay aligned.
 
 Review remains stratified: every disagreement is queued, because they are rare and high-impact; plus a configurable share of agreements, around ten percent, so false negatives are visible. The queue still **reads** the stored snapshot (not live Gmail) for evidence, so labeling works against what the judge saw even if the live message has moved.

@@ -78,7 +78,7 @@ Capture on desktop (~1440px wide). Prefer light mode. Hide the insecure-local ba
 | **3** | Configuration — terms | `/configuration` | Priority / review / new term lists + source/destination labels | “Whole-token terms and Gmail label mapping” |
 | **4** | Configuration — intent | Same page, scroll to **category intent** | Prose definitions for each category | “Intent is the standard of correctness—not the term list alone” |
 | **5** | Review queue | `/review` with a disagreement open | Deterministic outcome vs verdict vs snapshot excerpt side by side | “Human review measures the judge; it doesn’t replace triage” |
-| **6** | Demotion queue | `/demotion` with ≥1 pending item | Confirm/reject demotion into archive | “The model may promote freely; demotion needs you” |
+| **6** | Demotion queue | `/demotion` with ≥1 pending item | Confirm demotion into archive (Filing vs Verdict + Gmail link) | “The model may promote freely; demotion needs you” |
 | **7** | Run detail | `/runs/[id]` with mixed outcomes | Per-message results + status (completed / bounded incomplete) | “Every sync is bounded and auditable” |
 | **8** | Settings (optional) | `/settings` | Connection status + archive trash as a clearly labeled danger zone | “Destructive actions are explicit and opt-in” |
 

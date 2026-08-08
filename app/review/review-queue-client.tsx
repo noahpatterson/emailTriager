@@ -10,6 +10,8 @@ const REVIEW_SITTING_SIZE = 20;
 /** Mirrors DEFAULT_AUDIT_MAX_MESSAGES. */
 const AUDIT_MAX_MESSAGES_CAP = 100;
 const DEFAULT_JUDGE_COUNT = 10;
+/** Upper bound for a review-page audit POST (model batch can be slow). */
+const AUDIT_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 
 export type ReviewItem = Readonly<{
   verdictId: number;
@@ -91,6 +93,7 @@ async function submitLabel(messageId: string, ownerLabel: Category): Promise<voi
 async function startAudit(input: Readonly<{
   syncRunId: string;
   maxMessages: number;
+  signal?: AbortSignal;
 }>): Promise<Readonly<{
   id: string;
   status: string;
@@ -101,6 +104,7 @@ async function startAudit(input: Readonly<{
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
+    signal: input.signal,
     body: JSON.stringify({
       syncRunId: input.syncRunId,
       maxMessages: input.maxMessages,
@@ -119,11 +123,12 @@ async function startAudit(input: Readonly<{
 }
 
 function formatSyncRunLabel(run: AuditableSyncRunView): string {
-  const when = new Date(run.startedAt).toLocaleString(undefined, {
+  const when = new Date(run.startedAt).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "UTC",
   });
   const statusLabel =
     run.status === "bounded_incomplete"
@@ -133,7 +138,7 @@ function formatSyncRunLabel(run: AuditableSyncRunView): string {
         : run.status === "completed"
           ? "completed"
           : run.status;
-  return `${when} · ${statusLabel} · ${run.id.slice(0, 8)}`;
+  return `${when} · ${statusLabel} · ${run.id.slice(0, 8)} UTC`;
 }
 
 function emptyQueueMessage(queue: ReviewQueuePayload): string {
@@ -187,7 +192,7 @@ export function ReviewQueueClient({
   const [auditing, setAuditing] = useState(false);
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<ReviewQueueMode>(initialQueue.mode ?? "stratified");
-  const [maxMessages, setMaxMessages] = useState(DEFAULT_JUDGE_COUNT);
+  const [maxMessages, setMaxMessages] = useState<number | "">(DEFAULT_JUDGE_COUNT);
   const [syncRunId, setSyncRunId] = useState(
     initialQueue.syncRuns[0]?.id ?? initialQueue.syncRunId ?? "",
   );
@@ -221,18 +226,31 @@ export function ReviewQueueClient({
 
   const runAudit = useCallback(async () => {
     if (!effectiveSyncRunId || auditing || busy || pending) return;
-    const count = Math.max(1, Math.min(AUDIT_MAX_MESSAGES_CAP, Math.trunc(maxMessages) || 1));
+    const count = Math.max(
+      1,
+      Math.min(AUDIT_MAX_MESSAGES_CAP, Math.trunc(Number(maxMessages)) || 1),
+    );
     setAuditing(true);
     setError(null);
     setNotice(null);
     try {
-      const result = await startAudit({ syncRunId: effectiveSyncRunId, maxMessages: count });
+      const result = await startAudit({
+        syncRunId: effectiveSyncRunId,
+        maxMessages: count,
+        signal: AbortSignal.timeout(AUDIT_REQUEST_TIMEOUT_MS),
+      });
       setNotice(
         `Audit ${result.status}: judged ${result.processedCount} of ${result.totalEligible} eligible.`,
       );
       refresh(mode);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not start audit");
+      if (caught instanceof DOMException && caught.name === "TimeoutError") {
+        setError("Audit timed out. Try fewer messages or refresh and retry.");
+      } else if (caught instanceof Error && caught.name === "AbortError") {
+        setError("Audit was cancelled.");
+      } else {
+        setError(caught instanceof Error ? caught.message : "Could not start audit");
+      }
     } finally {
       setAuditing(false);
     }
@@ -244,7 +262,7 @@ export function ReviewQueueClient({
   const blocked = busy || pending || auditing;
 
   const labelCurrent = useCallback(async (ownerLabel: Category) => {
-    if (!current || busy || auditing) return;
+    if (!current || blocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -268,7 +286,7 @@ export function ReviewQueueClient({
     } finally {
       setBusy(false);
     }
-  }, [auditing, busy, current, items.length]);
+  }, [blocked, current, items.length]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -331,7 +349,15 @@ export function ReviewQueueClient({
               step={1}
               value={maxMessages}
               disabled={blocked}
-              onChange={(event) => setMaxMessages(Number(event.target.value))}
+              onChange={(event) => {
+                const raw = event.target.value;
+                if (raw === "") {
+                  setMaxMessages("");
+                  return;
+                }
+                const next = Number(raw);
+                if (Number.isFinite(next)) setMaxMessages(next);
+              }}
             />
             <span className="review-audit-hint">Caps API spend. Max {AUDIT_MAX_MESSAGES_CAP}.</span>
           </label>
