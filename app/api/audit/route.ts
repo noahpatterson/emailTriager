@@ -4,7 +4,8 @@ import {
   AuditClientError,
   AuditRunService,
 } from "@/src/server/gmail/audit-run";
-import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
+import { demoAiDisabledHttpResponse, isDemoLiveModelDisabled } from "@/src/server/demo/ai-gate";
+
 import { DEFAULT_AUDIT_MAX_MESSAGES } from "@/src/server/gmail/audit-batch";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
@@ -26,7 +27,8 @@ export async function handleAuditPost(
 ): Promise<Response> {
   try {
     requireSameOrigin(request);
-    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
+    if (isDemoLiveModelDisabled()) return demoAiDisabledHttpResponse();
+
     const auditService = service ?? new AuditRunService();
     const owner = await requireOwner();
     const body = await request.json().catch(() => null);

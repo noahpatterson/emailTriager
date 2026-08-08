@@ -18,6 +18,7 @@ import {
 } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
+import { sqlNotDemoMockSeedSync } from "@/src/server/demo/seed-mock-queues";
 import {
   asCategoryIntent,
   asTerms,
@@ -356,6 +357,7 @@ export class ReviewService {
         eq(syncRun.ownerAuthUserId, ownerId),
         inArray(syncRun.status, [...AUDITABLE_SYNC_RUN_STATUSES]),
         eq(syncRun.trial, false),
+        sqlNotDemoMockSeedSync(),
       ))
       .orderBy(desc(syncRun.startedAt))
       .limit(Math.max(1, Math.min(limit, 50)));

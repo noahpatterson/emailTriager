@@ -51,7 +51,7 @@ export function DeleteRunButton({
     event.stopPropagation();
     const kind = trial ? "trial run" : "sync run";
     if (!window.confirm(
-      `Delete this ${kind} from the database? This removes the run and its message records from Neon. Gmail is not changed.`,
+      `Delete this ${kind} from the database? This removes the run and its message records. Gmail is not changed.`,
     )) {
       return;
     }

@@ -17,6 +17,7 @@ import {
   DEMO_CORPUS_SOURCE_LABEL_ID,
   DEMO_CORPUS_TERMS,
 } from "@/src/server/gmail/corpus";
+import { seedDemoMockQueues } from "@/src/server/demo/seed-mock-queues";
 import { encryptSecret } from "@/src/server/security/crypto";
 
 export type DemoSessionRecord = Readonly<{
@@ -85,6 +86,8 @@ export async function bootstrapDemoOwner(ownerId: string, googleSubject: string)
         bounds: { maxPages: 3, maxMessagesPerPage: 50, maxTotalMessages: 100 },
       });
     }
+
+    await seedDemoMockQueues(db, ownerId, config.tokenEncryptionKeyV1);
   });
 }
 

@@ -181,8 +181,10 @@ function queueMetaLine(queue: ReviewQueuePayload, index: number, sittingSize: nu
 
 export function ReviewQueueClient({
   initialQueue,
+  demoProfile = false,
 }: {
   initialQueue: ReviewQueuePayload;
+  demoProfile?: boolean;
 }) {
   const [queue, setQueue] = useState(initialQueue);
   const [index, setIndex] = useState(0);
@@ -315,6 +317,8 @@ export function ReviewQueueClient({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [items.length, labelCurrent]);
 
+  const auditControlsDisabled = demoProfile || blocked;
+
   return (
     <>
       <details className="card review-audit-panel" open>
@@ -325,7 +329,7 @@ export function ReviewQueueClient({
             <select
               id="review-sync-run"
               value={effectiveSyncRunId}
-              disabled={blocked || queue.syncRuns.length === 0}
+              disabled={auditControlsDisabled || queue.syncRuns.length === 0}
               onChange={(event) => setSyncRunId(event.target.value)}
             >
               {queue.syncRuns.length === 0 ? (
@@ -348,7 +352,7 @@ export function ReviewQueueClient({
               max={AUDIT_MAX_MESSAGES_CAP}
               step={1}
               value={maxMessages}
-              disabled={blocked}
+              disabled={auditControlsDisabled}
               onChange={(event) => {
                 const raw = event.target.value;
                 if (raw === "") {
@@ -386,14 +390,16 @@ export function ReviewQueueClient({
             <button
               type="button"
               className="button"
-              disabled={blocked || !effectiveSyncRunId}
+              disabled={auditControlsDisabled || !effectiveSyncRunId}
               onClick={() => void runAudit()}
             >
               {auditing ? "Auditing…" : "Run audit"}
             </button>
           </div>
           <p className="review-action-notes">
-            Audit judges priority/review/new filings only — not archive, blocked, or whitelisted senders. Changing the queue option refreshes the list below.
+            {demoProfile
+              ? "Live model audits are disabled in the public demo. The queue below is seeded with five mock disagreements."
+              : "Audit judges priority/review/new filings only — not archive, blocked, or whitelisted senders. Changing the queue option refreshes the list below."}
           </p>
         </div>
       </details>
@@ -403,7 +409,7 @@ export function ReviewQueueClient({
           {queue.auditRunId ? (
             <p>{queueMetaLine(queue, index, REVIEW_SITTING_SIZE)}</p>
           ) : (
-            <p>No Audit Run yet. Expand “Run audit” above to start one.</p>
+            <p>{demoProfile ? "Mock audit missing — clear demo data and start again." : "No Audit Run yet. Expand “Run audit” above to start one."}</p>
           )}
           <p className="review-queue-keys">Keys: j/k navigate · 1–4 label</p>
         </div>

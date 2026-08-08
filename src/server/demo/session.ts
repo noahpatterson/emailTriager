@@ -7,7 +7,7 @@ import {
   resolveDemoSessionOwner,
 } from "@/src/server/demo/bootstrap";
 import { assertDemoDatabaseRoleSafe } from "@/src/server/demo/assert-db-role";
-import { consumeDemoSessionMintLimit } from "@/src/server/demo/limiters";
+import { checkDemoSessionMintLimit, recordDemoSessionMintHit } from "@/src/server/demo/limiters";
 import {
   DEMO_SESSION_COOKIE,
   DEMO_SESSION_TTL_MS,
@@ -36,7 +36,7 @@ export async function establishDemoSession(clientIp: string | null): Promise<{ o
   if (!isDemoProfile()) throw new Error("Demo sessions require APP_PROFILE=demo");
   await assertDemoDatabaseRoleSafe();
   const ipKey = clientIp?.trim() || "unknown";
-  const limit = await consumeDemoSessionMintLimit(ipKey);
+  const limit = await checkDemoSessionMintLimit(ipKey);
   if (!limit.allowed) {
     throw new Error("Demo session rate limit exceeded. Try again later.");
   }
@@ -49,6 +49,7 @@ export async function establishDemoSession(clientIp: string | null): Promise<{ o
     secure: process.env.NODE_ENV === "production",
     maxAge: Math.floor(DEMO_SESSION_TTL_MS / 1000),
   });
+  await recordDemoSessionMintHit(ipKey);
   return { ownerId: session.ownerId };
 }
 

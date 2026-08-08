@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { ownerBinding } from "@/db/schema";
 import { database, type Database } from "@/src/server/db";
 import {
@@ -26,22 +26,13 @@ export class OwnerPreferencesService {
 
   async setGmailMessageLinkRoot(ownerId: string, value: string): Promise<string> {
     const normalized = normalizeGmailMessageLinkRoot(value);
-    const [existing] = await this.db
-      .select({ authUserId: ownerBinding.authUserId })
-      .from(ownerBinding)
-      .where(eq(ownerBinding.authUserId, ownerId))
-      .limit(1);
-    if (!existing) {
-      await this.db.insert(ownerBinding).values({
-        authUserId: ownerId,
-        gmailMessageLinkRoot: normalized,
-      });
-      return normalized;
-    }
-    await this.db
-      .update(ownerBinding)
-      .set({ gmailMessageLinkRoot: normalized })
-      .where(eq(ownerBinding.authUserId, ownerId));
+    // Raw upsert: demo migrations drop singleton; Drizzle schema still models prod.
+    await this.db.execute(sql`
+      INSERT INTO owner_binding (auth_user_id, gmail_message_link_root)
+      VALUES (${ownerId}, ${normalized})
+      ON CONFLICT (auth_user_id) DO UPDATE
+      SET gmail_message_link_root = EXCLUDED.gmail_message_link_root
+    `);
     return normalized;
   }
 }

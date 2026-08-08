@@ -1,5 +1,4 @@
-import { requireOwner } from "@/src/server/auth/owner";
-import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
+import { withOwner } from "@/src/server/auth/owner";
 import { DemotionClientError, DemotionService } from "@/src/server/gmail/demotion-service";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
@@ -10,22 +9,22 @@ export async function handleDemotionConfirmPost(
 ): Promise<Response> {
   try {
     requireSameOrigin(request);
-    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
-    const demotionService = service ?? new DemotionService();
-    const owner = await requireOwner();
-    const decoded = messageId.trim();
-    if (!decoded) {
-      return Response.json({ error: "gmailMessageId is required" }, { status: 400 });
-    }
-    try {
-      const result = await demotionService.confirmDemotion(owner.userId, decoded);
-      return Response.json(result);
-    } catch (caught) {
-      if (caught instanceof DemotionClientError) {
-        return Response.json({ error: caught.message }, { status: 400 });
+    return await withOwner(async (owner) => {
+      const demotionService = service ?? new DemotionService();
+      const decoded = messageId.trim();
+      if (!decoded) {
+        return Response.json({ error: "gmailMessageId is required" }, { status: 400 });
       }
-      throw caught;
-    }
+      try {
+        const result = await demotionService.confirmDemotion(owner.userId, decoded);
+        return Response.json(result);
+      } catch (caught) {
+        if (caught instanceof DemotionClientError) {
+          return Response.json({ error: caught.message }, { status: 400 });
+        }
+        throw caught;
+      }
+    });
   } catch {
     return sanitizedErrorResponse();
   }

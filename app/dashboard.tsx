@@ -196,7 +196,7 @@ export function Dashboard({
           <h1>Email Triage</h1>
           <p className="lede">
             {demoProfile
-              ? "Sort a bounded fixture mailbox with deterministic, local rules. Audit and review are explained, not executed."
+              ? "Sort a bounded fixture mailbox with deterministic, local rules. Review and demotion use seeded mock verdicts."
               : "Sort a bounded set of Gmail messages with deterministic, local rules."}
           </p>
           <OwnerNav active="home" />
@@ -239,7 +239,7 @@ export function Dashboard({
               : "Authorize read and label access for the single owner account. Email is never sent, permanently deleted, or marked read.")}
         </p>
         {demoProfile ? (
-          <p className="field-help">Audit, review, and demotion confirmation are disabled here — open those pages for explainers.</p>
+          <p className="field-help">Open Review for five seeded disagreements, or Demotions for one pending archive confirm. Live model audits stay off.</p>
         ) : state.connected ? (
           <button className="button secondary" type="button" disabled={busy} onClick={disconnect}>{action === "disconnecting" ? "Disconnecting…" : "Disconnect Gmail"}</button>
         ) : (

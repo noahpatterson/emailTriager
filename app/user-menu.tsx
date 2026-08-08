@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import type { OwnerUser } from "@/app/owner-user";
 
@@ -15,10 +16,37 @@ export function UserMenu({
   onResetDemo?: () => void;
   resetting?: boolean;
 }) {
+  const rootRef = useRef<HTMLDetailsElement>(null);
   const name = user.name.trim();
   const label = name || user.email || "Owner";
+
+  useEffect(() => {
+    function closeIfOpen() {
+      const root = rootRef.current;
+      if (root?.open) root.open = false;
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      const root = rootRef.current;
+      if (!root?.open) return;
+      if (event.target instanceof Node && root.contains(event.target)) return;
+      closeIfOpen();
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeIfOpen();
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   return (
-    <details className="user-menu">
+    <details ref={rootRef} className="user-menu">
       <summary className="user-menu-trigger" aria-label={`Account menu for ${label}`}>
         <span className="user-menu-avatar" aria-hidden="true">{label.slice(0, 1).toUpperCase()}</span>
         <span className="user-menu-label">

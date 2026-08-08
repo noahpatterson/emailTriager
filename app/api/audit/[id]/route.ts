@@ -3,7 +3,8 @@ import {
   AUDIT_ERROR_CODE_SET,
   AuditRunService,
 } from "@/src/server/gmail/audit-run";
-import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
+import { demoAiDisabledHttpResponse, isDemoLiveModelDisabled } from "@/src/server/demo/ai-gate";
+
 import { sanitizedErrorResponse } from "@/src/server/security/request";
 
 type RouteContext = Readonly<{ params: Promise<{ id: string }> }>;
@@ -14,7 +15,8 @@ export async function handleAuditGet(
   service?: AuditRunService,
 ): Promise<Response> {
   try {
-    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
+    if (isDemoLiveModelDisabled()) return demoAiDisabledHttpResponse();
+
     const auditService = service ?? new AuditRunService();
     const owner = await requireOwner();
     const { id } = await context.params;

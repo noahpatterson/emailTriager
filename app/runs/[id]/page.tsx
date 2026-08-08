@@ -107,7 +107,8 @@ export default async function RunDetailPage({
           </div>
         </div>
         <div className="hero-aside">
-          <UserMenu user={user} />
+          <UserMenu user={user} demoProfile={config.demoProfile} />
+          <Link className="back-link" href="/">← Back to Email Triage</Link>
         </div>
       </header>
 

@@ -18,7 +18,7 @@ export default function SignInPage() {
       <h1>{demoProfile ? "Start the demo" : "Sign in"}</h1>
       <p>
         {demoProfile
-          ? "Mint an isolated cookie session with a fixture mailbox. Sync is yours to click; audit and review stay as explainers."
+          ? "Mint an isolated cookie session with a fixture mailbox. Sync is yours to click; review and demotion open with seeded mock queues."
           : insecureLocalDev
             ? "Continue with the synthetic local owner session. Google OAuth for Gmail still uses your real OAuth client."
             : "Use the configured owner account (email/password or Google) to open Email Triage."}

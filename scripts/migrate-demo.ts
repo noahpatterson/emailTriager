@@ -66,9 +66,10 @@ try {
     END
     $$
   `);
-  await client.query(`ALTER ROLE emailtriager_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD $1`, [
-    appPassword,
-  ]);
+  // PASSWORD cannot use bind params ($1); Postgres parses it as an identifier/literal only.
+  await client.query(
+    `ALTER ROLE emailtriager_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD ${client.escapeLiteral(appPassword)}`,
+  );
   await client.query(`
     GRANT USAGE ON SCHEMA public TO emailtriager_app;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO emailtriager_app;

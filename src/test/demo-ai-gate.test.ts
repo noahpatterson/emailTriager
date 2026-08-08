@@ -1,12 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { demoAiDisabledResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
+import {
+  demoAiDisabledResponse,
+  isDemoAiDisabled,
+  isDemoLiveModelDisabled,
+} from "@/src/server/demo/ai-gate";
 
-describe("demo AI feature gate", () => {
-  test("disables AI only for the demo profile", () => {
+describe("demo live-model feature gate", () => {
+  test("disables live model paths only for the demo profile", () => {
+    expect(isDemoLiveModelDisabled("demo")).toBe(true);
+    expect(isDemoLiveModelDisabled("ci")).toBe(false);
+    expect(isDemoLiveModelDisabled("local-compose")).toBe(false);
     expect(isDemoAiDisabled("demo")).toBe(true);
-    expect(isDemoAiDisabled("ci")).toBe(false);
-    expect(isDemoAiDisabled("local-compose")).toBe(false);
-    expect(isDemoAiDisabled(undefined)).toBe(false);
+    const previous = process.env.APP_PROFILE;
+    delete process.env.APP_PROFILE;
+    try {
+      expect(isDemoLiveModelDisabled()).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.APP_PROFILE;
+      else process.env.APP_PROFILE = previous;
+    }
   });
 
   test("returns a stable refusal payload for gated routes", () => {
@@ -15,7 +27,7 @@ describe("demo AI feature gate", () => {
     expect(response.body).toEqual({
       error: "demo_ai_disabled",
       message:
-        "Audit, review, demotion confirmation, and model eval are disabled in the public demo. They run only in the single-owner deployment with a real model configuration.",
+        "Starting a live audit and running model eval are disabled in the public demo. Review and demotion use seeded mock verdicts; live model runs stay in the single-owner deployment.",
     });
   });
 });

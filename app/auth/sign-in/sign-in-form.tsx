@@ -42,7 +42,7 @@ export function SignInForm({
                   credentials: "same-origin",
                 });
                 if (response.status === 429) {
-                  setDemoError("Too many demo sessions from this network. Try again later.");
+                  setDemoError("Too many demo sessions from this network (5 per hour). Try again later.");
                   return;
                 }
                 if (!response.ok) throw new Error();

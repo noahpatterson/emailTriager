@@ -16,6 +16,7 @@ let submitImpl: (
 
 mock.module("@/src/server/auth/owner", () => ({
   requireOwner: () => ownerImpl(),
+  withOwner: async <T,>(run: (owner: { userId: string }) => Promise<T>) => run(await ownerImpl()),
 }));
 
 mock.module("@/src/server/gmail/review-service", () => ({

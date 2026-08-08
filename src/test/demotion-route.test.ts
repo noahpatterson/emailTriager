@@ -12,6 +12,7 @@ let confirmImpl: (ownerId: string, messageId: string) => Promise<unknown> = asyn
 
 mock.module("@/src/server/auth/owner", () => ({
   requireOwner: () => ownerImpl(),
+  withOwner: async <T,>(run: (owner: { userId: string }) => Promise<T>) => run(await ownerImpl()),
 }));
 
 mock.module("@/src/server/gmail/demotion-service", () => ({

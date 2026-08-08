@@ -9,6 +9,7 @@ import { getServerConfig } from "@/src/config/server";
 import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
 import { database, withDemoOwnerScope } from "@/src/server/db";
+import { sqlNotDemoMockSeedSync } from "@/src/server/demo/seed-mock-queues";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { buildGmailLabelJumps } from "@/src/server/gmail/gmail-url";
 
@@ -51,7 +52,11 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
       nextPageToken: syncRun.nextPageToken,
     })
     .from(syncRun)
-    .where(eq(syncRun.ownerAuthUserId, ownerId))
+    .where(and(
+      eq(syncRun.ownerAuthUserId, ownerId),
+      // Seeded review/demotion fixture sync — not visitor sync activity.
+      sqlNotDemoMockSeedSync(),
+    ))
     .orderBy(desc(syncRun.startedAt))
     .limit(30);
   const gmailMessageLinkRoot = await new OwnerPreferencesService(db).getGmailMessageLinkRoot(ownerId);

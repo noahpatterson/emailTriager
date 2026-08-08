@@ -204,7 +204,7 @@ bun run dev
 
 ### 1b. Public demo Docker (local confirmation)
 
-No Neon or Google account required. Compose starts Postgres, applies production migrations, then **demo-only** migrations (`db/migrations-demo/`), and runs with `APP_PROFILE=demo`. Audit / review / demotion APIs are disabled and those pages show explainers.
+No Neon or Google account required. Compose starts Postgres, applies production migrations, then **demo-only** migrations (`db/migrations-demo/`), and runs with `APP_PROFILE=demo`. Review and demotion use seeded mock queues (5 disagreements + 1 pending archive); live model audit/eval stay disabled.
 
 ```sh
 docker compose -f docker-compose.demo.yml up --build
