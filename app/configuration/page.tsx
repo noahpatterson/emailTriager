@@ -11,7 +11,7 @@ import { getServerConfig } from "@/src/config/server";
 import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { TriageConfigService } from "@/src/server/config/triage";
 import { getSession } from "@/src/server/auth/session";
-import { database } from "@/src/server/db";
+import { database, withDemoOwnerScope } from "@/src/server/db";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export default async function ConfigurationPage() {
   const { data, error } = await getSession();
   const userId = data?.user?.id;
   if (error || !userId) redirect("/auth/sign-in");
-  if (userId !== config.ownerNeonAuthUserId) {
+  if (!config.demoProfile && userId !== config.ownerNeonAuthUserId) {
     return <main className="shell signed-out">
       <BrandLogo href={null} size="lg" />
       <p className="eyebrow">PRIVATE OWNER CONSOLE</p>
@@ -32,34 +32,39 @@ export default async function ConfigurationPage() {
     </main>;
   }
 
-  let provider;
-  try {
-    provider = await googleProviderForOwner(userId);
-  } catch {
-    provider = undefined;
-  }
-  const [triageConfig, gmailMessageLinkRoot] = await Promise.all([
-    new TriageConfigService().getLatestForForm(userId, provider),
-    new OwnerPreferencesService(database()).getGmailMessageLinkRoot(userId),
-  ]);
-  const user = ownerUserFromSession(data.user);
+  return withDemoOwnerScope(userId, async () => {
+    let provider;
+    try {
+      provider = await googleProviderForOwner(userId);
+    } catch {
+      provider = undefined;
+    }
+    // Demo RLS uses one PoolClient — keep these sequential.
+    const triageConfig = await new TriageConfigService().getLatestForForm(userId, provider);
+    const gmailMessageLinkRoot = await new OwnerPreferencesService(database()).getGmailMessageLinkRoot(userId);
+    const user = ownerUserFromSession(data.user);
 
-  return <main className="shell">
-    <header className="hero">
-      <div className="brand-heading">
-        <BrandLogo size="md" />
-        <div className="brand-heading-copy">
-          <p className="eyebrow">OWNER CONSOLE</p>
-          <h1>Configuration</h1>
-          <p className="lede">Set Gmail labels by name, classification terms, category intent, sender protection, sync bounds, and message link root.</p>
-          <OwnerNav active="configuration" />
+    return <main className="shell">
+      <header className="hero">
+        <div className="brand-heading">
+          <BrandLogo size="md" />
+          <div className="brand-heading-copy">
+            <p className="eyebrow">{config.demoProfile ? "PUBLIC DEMO" : "OWNER CONSOLE"}</p>
+            <h1>Configuration</h1>
+            <p className="lede">Set Gmail labels by name, classification terms, category intent, sender protection, sync bounds, and message link root.</p>
+            <OwnerNav active="configuration" />
+          </div>
         </div>
-      </div>
-      <div className="hero-aside">
-        <UserMenu user={user} />
-      </div>
-    </header>
-    <ConfigurationForm initialConfig={triageConfig} gmailConnected={Boolean(provider)} />
-    <GmailLinkRootForm initialValue={gmailMessageLinkRoot} />
-  </main>;
+        <div className="hero-aside">
+          <UserMenu user={user} />
+        </div>
+      </header>
+      <ConfigurationForm
+        initialConfig={triageConfig}
+        gmailConnected={Boolean(provider)}
+        demoProfile={config.demoProfile}
+      />
+      <GmailLinkRootForm initialValue={gmailMessageLinkRoot} />
+    </main>;
+  });
 }

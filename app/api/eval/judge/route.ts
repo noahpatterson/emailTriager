@@ -1,4 +1,5 @@
 import { requireOwner } from "@/src/server/auth/owner";
+import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
 import {
   JudgeEvalClientError,
   JudgeEvalService,
@@ -8,13 +9,15 @@ import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security
 
 export async function handleJudgeEvalPost(
   request: Request,
-  service: JudgeEvalService = new JudgeEvalService(),
+  service?: JudgeEvalService,
 ): Promise<Response> {
   try {
     requireSameOrigin(request);
+    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
+    const judgeService = service ?? new JudgeEvalService();
     const owner = await requireOwner();
     try {
-      const result = await service.run(owner.userId);
+      const result = await judgeService.run(owner.userId);
       return Response.json({
         id: result.id,
         type: "judge",

@@ -20,6 +20,15 @@ describe("parseAllowedCidrs", () => {
 });
 
 describe("clientIpFromHeaders", () => {
+  test("prefers X-Vercel-Forwarded-For when present", () => {
+    const headers = new Headers({
+      "x-vercel-forwarded-for": "203.0.113.99",
+      "x-forwarded-for": "203.0.113.10, 10.0.0.1",
+      "x-real-ip": "198.51.100.1",
+    });
+    expect(clientIpFromHeaders(headers)).toBe("203.0.113.99");
+  });
+
   test("prefers the first X-Forwarded-For hop", () => {
     const headers = new Headers({
       "x-forwarded-for": "203.0.113.10, 10.0.0.1",

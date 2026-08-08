@@ -4,7 +4,17 @@ import Link from "next/link";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import type { OwnerUser } from "@/app/owner-user";
 
-export function UserMenu({ user }: { user: OwnerUser }) {
+export function UserMenu({
+  user,
+  demoProfile = false,
+  onResetDemo,
+  resetting = false,
+}: {
+  user: OwnerUser;
+  demoProfile?: boolean;
+  onResetDemo?: () => void;
+  resetting?: boolean;
+}) {
   const name = user.name.trim();
   const label = name || user.email || "Owner";
   return (
@@ -16,14 +26,25 @@ export function UserMenu({ user }: { user: OwnerUser }) {
           {name ? <small>{user.email}</small> : null}
         </span>
       </summary>
-      <div className="user-menu-panel">
+      <div className="user-menu-panel" role="menu">
         <div className="user-menu-current">
           <p>Signed in as</p>
           <strong>{name || "Owner"}</strong>
           <span>{user.email}</span>
         </div>
-        <Link className="user-menu-link" href="/configuration">Configuration</Link>
-        <Link className="user-menu-link" href="/settings">Settings</Link>
+        <Link className="user-menu-link" href="/configuration" role="menuitem">Configuration</Link>
+        <Link className="user-menu-link" href="/settings" role="menuitem">Settings</Link>
+        {demoProfile && onResetDemo ? (
+          <button
+            className="user-menu-sign-out"
+            type="button"
+            role="menuitem"
+            disabled={resetting}
+            onClick={onResetDemo}
+          >
+            {resetting ? "Clearing…" : "Clear my demo data"}
+          </button>
+        ) : null}
         <SignOutButton className="user-menu-sign-out" />
       </div>
     </details>

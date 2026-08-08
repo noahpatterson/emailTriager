@@ -1,4 +1,4 @@
-import { requireOwner } from "@/src/server/auth/owner";
+import { withOwner } from "@/src/server/auth/owner";
 import { TriageConfigService } from "@/src/server/config/triage";
 import {
   asCategoryIntent,
@@ -50,15 +50,16 @@ function parseBody(body: unknown): TriageConfigInput | null {
 
 export async function GET(): Promise<Response> {
   try {
-    const owner = await requireOwner();
-    let provider;
-    try {
-      provider = await googleProviderForOwner(owner.userId);
-    } catch {
-      provider = undefined;
-    }
-    const config = await new TriageConfigService().getLatestForForm(owner.userId, provider);
-    return Response.json({ config, gmailConnected: Boolean(provider) });
+    return await withOwner(async (owner) => {
+      let provider;
+      try {
+        provider = await googleProviderForOwner(owner.userId);
+      } catch {
+        provider = undefined;
+      }
+      const config = await new TriageConfigService().getLatestForForm(owner.userId, provider);
+      return Response.json({ config, gmailConnected: Boolean(provider) });
+    });
   } catch {
     return sanitizedErrorResponse();
   }
@@ -67,34 +68,35 @@ export async function GET(): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     requireSameOrigin(request);
-    const owner = await requireOwner();
-    const input = parseBody(await request.json());
-    if (!input) return sanitizedErrorResponse();
-    let provider;
-    try {
-      provider = await googleProviderForOwner(owner.userId);
-    } catch {
-      return Response.json({ error: "Connect Gmail before saving label names." }, { status: 400 });
-    }
-    try {
-      const config = await new TriageConfigService().save(owner.userId, input, provider);
-      return Response.json({ config });
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "";
-      if (
-        message.includes("label")
-        || message.includes("Label")
-        || message.includes("distinct")
-        || message.includes("term")
-        ||         message.includes("whitelist")
-        || message.includes("blocklist")
-        || message.includes("bound")
-        || message.includes("intent")
-      ) {
-        return Response.json({ error: message }, { status: 400 });
+    return await withOwner(async (owner) => {
+      const input = parseBody(await request.json());
+      if (!input) return sanitizedErrorResponse();
+      let provider;
+      try {
+        provider = await googleProviderForOwner(owner.userId);
+      } catch {
+        return Response.json({ error: "Connect Gmail before saving label names." }, { status: 400 });
       }
-      throw caught;
-    }
+      try {
+        const config = await new TriageConfigService().save(owner.userId, input, provider);
+        return Response.json({ config });
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : "";
+        if (
+          message.includes("label")
+          || message.includes("Label")
+          || message.includes("distinct")
+          || message.includes("term")
+          || message.includes("whitelist")
+          || message.includes("blocklist")
+          || message.includes("bound")
+          || message.includes("intent")
+        ) {
+          return Response.json({ error: message }, { status: 400 });
+        }
+        throw caught;
+      }
+    });
   } catch {
     return sanitizedErrorResponse();
   }

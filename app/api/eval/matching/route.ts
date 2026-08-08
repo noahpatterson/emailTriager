@@ -1,11 +1,13 @@
 import { requireOwner } from "@/src/server/auth/owner";
 import { asBounds, asTerms } from "@/src/server/config/triage-validate";
+import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
 import { MatchingEvalService } from "@/src/server/gmail/matching-eval-service";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
 
 export async function POST(request: Request): Promise<Response> {
   try {
     requireSameOrigin(request);
+    if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
     const owner = await requireOwner();
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") {

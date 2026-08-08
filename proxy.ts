@@ -4,6 +4,7 @@ import {
   assertInsecureLocalDevRequest,
   isInsecureLocalDevRequested,
 } from "@/src/server/auth/local-dev-flags";
+import { isDemoProfile } from "@/src/server/demo/ai-gate";
 import {
   clientIpFromHeaders,
   isIpAllowed,
@@ -58,7 +59,7 @@ export default async function proxy(request: NextRequest) {
     );
   }
 
-  if (isInsecureLocalDevRequested()) {
+  if (isInsecureLocalDevRequested() || isDemoProfile()) {
     return NextResponse.next();
   }
 

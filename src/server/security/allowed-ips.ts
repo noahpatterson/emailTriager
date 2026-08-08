@@ -12,6 +12,10 @@ export function parseAllowedCidrs(raw: string | undefined): string[] {
 }
 
 export function clientIpFromHeaders(headers: Headers): string | null {
+  // Vercel sets this to the client IP; prefer it over XFF which can be spoofed
+  // when the edge does not overwrite the client-supplied header.
+  const vercel = headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim();
+  if (vercel) return vercel;
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   if (forwarded) return forwarded;
   return headers.get("x-real-ip")?.trim() || null;

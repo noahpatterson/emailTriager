@@ -7,6 +7,7 @@ import {
   establishLocalDevSession,
 } from "@/src/server/auth/local-dev";
 import { getNeonAuth } from "@/src/server/auth/neon";
+import { clearDemoSessionCookieAndData } from "@/src/server/demo/session";
 
 export type SignInState = Readonly<{ error: string | null }>;
 
@@ -28,7 +29,19 @@ export async function signOutLocalOwner(): Promise<void> {
   redirect("/auth/sign-in");
 }
 
+export async function signOutDemoVisitor(): Promise<void> {
+  const config = getServerConfig();
+  if (!config.demoProfile) {
+    throw new Error("Demo sign-out is only available when APP_PROFILE=demo");
+  }
+  await clearDemoSessionCookieAndData();
+  redirect("/auth/sign-in");
+}
+
 export async function signIn(_state: SignInState, formData: FormData): Promise<SignInState> {
+  if (getServerConfig().demoProfile) {
+    return { error: "Use Start demo session in the public demo." };
+  }
   if (getServerConfig().insecureLocalDev) {
     return { error: "Use Continue as local owner in insecure local mode." };
   }
