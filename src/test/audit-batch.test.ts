@@ -23,8 +23,8 @@ function okVerdict(category: "priority" | "review" | "new" | "archive"): JudgeVe
 describe("runAuditBatch", () => {
   test("judges every eligible message passed by the caller", async () => {
     const messages: AuditBatchMessage[] = [
-      { gmailMessageId: "m1", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
-      { gmailMessageId: "m2", outcome: "blocked", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m1", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m2", outcome: "review", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
     ];
     const calls: string[] = [];
     const verdicts = await runAuditBatch({
@@ -41,9 +41,9 @@ describe("runAuditBatch", () => {
 
   test("issues one model call per message", async () => {
     const messages: AuditBatchMessage[] = [
-      { gmailMessageId: "m1", outcome: "blocked", from: "a@x", subject: "s", bodyText: "b" },
-      { gmailMessageId: "m2", outcome: "unmatched", from: "a@x", subject: "s", bodyText: "b" },
-      { gmailMessageId: "m3", outcome: "review", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m1", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m2", outcome: "new", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m3", outcome: "review", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
     ];
     let calls = 0;
     await runAuditBatch({
@@ -64,6 +64,7 @@ describe("runAuditBatch", () => {
       gmailMessageId: `m${i}`,
       outcome: "new" as const,
       from: "a@x",
+      replyTo: "",
       subject: "s",
       bodyText: "b",
     }));
@@ -85,8 +86,8 @@ describe("runAuditBatch", () => {
 
   test("continues after a malformed verdict", async () => {
     const messages: AuditBatchMessage[] = [
-      { gmailMessageId: "bad", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
-      { gmailMessageId: "good", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "bad", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
+      { gmailMessageId: "good", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
     ];
     const verdicts = await runAuditBatch({
       messages,
@@ -113,10 +114,10 @@ describe("runAuditBatch", () => {
   test("drains active workers before propagating a judge failure", async () => {
     let finishedAfterStop = 0;
     const messages: AuditBatchMessage[] = [
-      { gmailMessageId: "m0", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
-      { gmailMessageId: "m1", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
-      { gmailMessageId: "m2", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
-      { gmailMessageId: "m3", outcome: "priority", from: "a@x", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m0", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m1", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m2", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
+      { gmailMessageId: "m3", outcome: "priority", from: "a@x", replyTo: "", subject: "s", bodyText: "b" },
     ];
     await expect(runAuditBatch({
       messages,

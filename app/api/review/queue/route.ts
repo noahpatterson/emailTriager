@@ -1,17 +1,20 @@
 import { requireOwner } from "@/src/server/auth/owner";
 import { demoAiDisabledHttpResponse, isDemoAiDisabled } from "@/src/server/demo/ai-gate";
+import { parseReviewQueueMode } from "@/src/server/gmail/review-queue";
 import { ReviewService } from "@/src/server/gmail/review-service";
 import { sanitizedErrorResponse } from "@/src/server/security/request";
 
 export async function handleReviewQueueGet(
-  _request: Request,
+  request: Request,
   service?: ReviewService,
 ): Promise<Response> {
   try {
     if (isDemoAiDisabled()) return demoAiDisabledHttpResponse();
     const reviewService = service ?? new ReviewService();
     const owner = await requireOwner();
-    const queue = await reviewService.getQueue(owner.userId);
+    const url = new URL(request.url);
+    const mode = parseReviewQueueMode(url.searchParams.get("mode"));
+    const queue = await reviewService.getQueue(owner.userId, { mode });
     return Response.json(queue);
   } catch {
     return sanitizedErrorResponse();

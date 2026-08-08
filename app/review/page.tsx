@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BrandLogo } from "@/app/brand-logo";
 import { DemoAiExplainer } from "@/app/demo-ai-explainer";
+import { OwnerNav } from "@/app/owner-nav";
+import { ownerUserFromSession } from "@/app/owner-user";
+import { UserMenu } from "@/app/user-menu";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
 import { getSession } from "@/src/server/auth/session";
@@ -27,10 +30,10 @@ export default async function ReviewPage() {
                 In the single-owner app, this page records Owner Labels against judge verdicts
                 without changing Gmail.
               </p>
+              <OwnerNav active="review" />
             </div>
           </div>
           <div className="hero-aside">
-            <Link className="back-link" href="/demotion">Pending demotions</Link>
             <Link className="back-link" href="/">← Back to Email Triage</Link>
           </div>
         </header>
@@ -61,6 +64,7 @@ export default async function ReviewPage() {
   const { ReviewQueueClient } = await import("@/app/review/review-queue-client");
   const { ReviewService } = await import("@/src/server/gmail/review-service");
   const initialQueue = await new ReviewService().getQueue(userId);
+  const user = ownerUserFromSession(data.user);
 
   return (
     <main className="shell">
@@ -71,14 +75,14 @@ export default async function ReviewPage() {
             <p className="eyebrow">OWNER CONSOLE</p>
             <h1>Review Queue</h1>
             <p className="lede">
-              Label disagreements and a sample of agreements. j/k move; 1–4 set the Owner Label.
-              Review never changes Gmail.
+              Run a bounded audit, then label the queue. j/k move; 1–4 set the Owner Label
+              and re-file that category in Gmail.
             </p>
+            <OwnerNav active="review" />
           </div>
         </div>
         <div className="hero-aside">
-          <Link className="back-link" href="/demotion">Pending demotions</Link>
-          <Link className="back-link" href="/">← Back to Email Triage</Link>
+          <UserMenu user={user} />
         </div>
       </header>
       <ReviewQueueClient initialQueue={initialQueue} />

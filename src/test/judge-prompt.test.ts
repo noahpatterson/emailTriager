@@ -73,8 +73,6 @@ describe("assembleJudgePrompt", () => {
     name: string;
     message: JudgePromptMessage;
     expectOutcomeInUser: string;
-    expectBodyContains?: string;
-    expectBodyOmits?: string;
   }> = [
     {
       name: "keeps blocked distinct from unmatched",
@@ -97,16 +95,15 @@ describe("assembleJudgePrompt", () => {
       expectOutcomeInUser: "deterministic_outcome: unmatched",
     },
     {
-      name: "truncates long bodies in the user message",
+      name: "omits full body text from the user message",
       message: {
         from: "a@example.com",
         subject: "long",
-        bodyText: "Z".repeat(DEFAULT_PROMPT_BODY_CHARS + 10),
+        bodyText: "SECRET_FULL_BODY_MARKER " + "Z".repeat(200),
         deterministicOutcome: "priority",
+        classifierMatch: "Matched priority term “urgent” near «please urgent reply»",
       },
       expectOutcomeInUser: "deterministic_outcome: priority",
-      expectBodyContains: "Z".repeat(40),
-      expectBodyOmits: "Z".repeat(DEFAULT_PROMPT_BODY_CHARS + 1),
     },
   ];
 
@@ -123,19 +120,54 @@ describe("assembleJudgePrompt", () => {
       });
       expect(prompt.system).toContain("priority: Needs owner today");
       expect(prompt.system).toContain("archive: Noise or done");
+      expect(prompt.system).toContain("You do not receive the full email body");
       expect(prompt.user).toContain(`from: ${row.message.from}`);
       expect(prompt.user).toContain(`subject: ${row.message.subject}`);
       expect(prompt.user).toContain("<<<MESSAGE");
       expect(prompt.user).toContain("MESSAGE>>>");
+      expect(prompt.user).not.toContain("body:");
+      if (row.message.bodyText) {
+        expect(prompt.user).not.toContain(row.message.bodyText.slice(0, 40));
+      }
       expect(prompt.user).toContain(row.expectOutcomeInUser);
       expect(prompt.user).toContain("exemplar priority: real outage");
       expect(prompt.user).toContain("exemplar archive: newsletter");
-      if (row.expectBodyContains) expect(prompt.user).toContain(row.expectBodyContains);
-      if (row.expectBodyOmits) expect(prompt.user).not.toContain(row.expectBodyOmits);
       const categories: Category[] = ["priority", "review", "new", "archive"];
       for (const category of categories) {
         expect(prompt.system).toContain(`${category}:`);
       }
     });
   }
+
+  test("includes classifier_match when provided", () => {
+    const prompt = assembleJudgePrompt({
+      categoryIntent: intents,
+      message: {
+        from: "a@example.com",
+        subject: "please review",
+        bodyText: "body",
+        deterministicOutcome: "review",
+        classifierMatch: "Matched review term “review” near «please review»",
+      },
+      exemplars: selectExemplarsByCategory([]),
+    });
+    expect(prompt.user).toContain(
+      "classifier_match: Matched review term “review” near «please review»",
+    );
+    expect(prompt.system).toContain("classifier_match");
+  });
+
+  test("emits classifier_match (none) when absent", () => {
+    const prompt = assembleJudgePrompt({
+      categoryIntent: intents,
+      message: {
+        from: "a@example.com",
+        subject: "hello",
+        bodyText: "no terms",
+        deterministicOutcome: "unmatched",
+      },
+      exemplars: selectExemplarsByCategory([]),
+    });
+    expect(prompt.user).toContain("classifier_match: (none)");
+  });
 });

@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { BrandLogo } from "@/app/brand-logo";
 import { ConfigurationForm } from "@/app/configuration/configuration-form";
 import { GmailLinkRootForm } from "@/app/configuration/gmail-link-root";
+import { OwnerNav } from "@/app/owner-nav";
+import { ownerUserFromSession } from "@/app/owner-user";
+import { UserMenu } from "@/app/user-menu";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
 import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
@@ -36,10 +39,10 @@ export default async function ConfigurationPage() {
     } catch {
       provider = undefined;
     }
-    const [triageConfig, gmailMessageLinkRoot] = await Promise.all([
-      new TriageConfigService().getLatestForForm(userId, provider),
-      new OwnerPreferencesService(database()).getGmailMessageLinkRoot(userId),
-    ]);
+    // Demo RLS uses one PoolClient — keep these sequential.
+    const triageConfig = await new TriageConfigService().getLatestForForm(userId, provider);
+    const gmailMessageLinkRoot = await new OwnerPreferencesService(database()).getGmailMessageLinkRoot(userId);
+    const user = ownerUserFromSession(data.user);
 
     return <main className="shell">
       <header className="hero">
@@ -49,9 +52,12 @@ export default async function ConfigurationPage() {
             <p className="eyebrow">{config.demoProfile ? "PUBLIC DEMO" : "OWNER CONSOLE"}</p>
             <h1>Configuration</h1>
             <p className="lede">Set Gmail labels by name, classification terms, category intent, sender protection, sync bounds, and message link root.</p>
+            <OwnerNav active="configuration" />
           </div>
         </div>
-        <Link className="back-link" href="/">← Back to Email Triage</Link>
+        <div className="hero-aside">
+          <UserMenu user={user} />
+        </div>
       </header>
       <ConfigurationForm
         initialConfig={triageConfig}

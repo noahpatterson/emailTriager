@@ -1,15 +1,25 @@
 import { isGmailStarred, type ParsedMessage } from "./message";
 
 export type ClassificationOutcome = "priority" | "review" | "new" | "unmatched" | "protected" | "blocked";
+export type TermMatchCategory = "priority" | "review" | "new";
+/** Window of normalized corpus around the matched term (for judge / review). */
+export type TermMatchEvidence = Readonly<{
+  category: TermMatchCategory;
+  term: string;
+  excerpt: string;
+}>;
 export type ClassificationResult = Readonly<{
   outcome: ClassificationOutcome;
   reason: string;
+  match: TermMatchEvidence | null;
 }>;
 export type ClassificationTerms = Readonly<{
   priority: readonly string[];
   review: readonly string[];
   new: readonly string[];
 }>;
+/** Characters of normalized corpus kept on each side of the matched term. */
+export const DEFAULT_MATCH_CONTEXT_CHARS = 80;
 
 const MAX_TERMS_PER_CATEGORY = 100;
 const MAX_TERM_LENGTH = 200;
@@ -29,15 +39,70 @@ export function normalizeTerms(terms: readonly string[]): readonly string[] {
 /** Letters/numbers/marks/underscore, plus apostrophes that join contraction/possessive parts. */
 const TOKEN_CHARACTER = /[\p{L}\p{N}\p{M}_'\u2019]/u;
 
-function termMatches(corpus: string, term: string): boolean {
+/** First word-boundary match offset, or -1. */
+function findTermMatchOffset(corpus: string, term: string): number {
   let offset = corpus.indexOf(term);
   while (offset !== -1) {
     const before = offset === 0 ? "" : corpus[offset - 1] ?? "";
     const after = corpus[offset + term.length] ?? "";
-    if (!TOKEN_CHARACTER.test(before) && !TOKEN_CHARACTER.test(after)) return true;
+    if (!TOKEN_CHARACTER.test(before) && !TOKEN_CHARACTER.test(after)) return offset;
     offset = corpus.indexOf(term, offset + 1);
   }
-  return false;
+  return -1;
+}
+
+export function excerptAroundMatch(
+  corpus: string,
+  offset: number,
+  termLength: number,
+  radius: number = DEFAULT_MATCH_CONTEXT_CHARS,
+): string {
+  const start = Math.max(0, offset - radius);
+  const end = Math.min(corpus.length, offset + termLength + radius);
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < corpus.length ? "…" : "";
+  return `${prefix}${corpus.slice(start, end)}${suffix}`;
+}
+
+function matchCorpusFor(
+  message: Readonly<Pick<ParsedMessage, "from" | "replyTo" | "subject" | "bodyText">>,
+): string {
+  return normalizeMatchText(
+    [message.from, message.replyTo, message.subject, message.bodyText].join("\n"),
+  );
+}
+
+/**
+ * Same first-match-wins scan as classify, returning the matched term and a
+ * surrounding excerpt of the normalized corpus (empty when no term matched).
+ */
+export function findClassificationMatch(
+  message: Readonly<Pick<ParsedMessage, "from" | "replyTo" | "subject" | "bodyText">>,
+  terms: ClassificationTerms,
+): TermMatchEvidence | null {
+  const corpus = matchCorpusFor(message);
+  const categories = [
+    ["priority", terms.priority],
+    ["review", terms.review],
+    ["new", terms.new],
+  ] as const;
+  for (const [category, configuredTerms] of categories) {
+    for (const term of normalizeTerms(configuredTerms)) {
+      const offset = findTermMatchOffset(corpus, term);
+      if (offset >= 0) {
+        return {
+          category,
+          term,
+          excerpt: excerptAroundMatch(corpus, offset, term.length),
+        };
+      }
+    }
+  }
+  return null;
+}
+
+export function formatMatchEvidence(match: TermMatchEvidence): string {
+  return `Matched ${match.category} term “${match.term}” near «${match.excerpt}»`;
 }
 
 export function parseMailboxAddress(header: string): string | null {
@@ -71,33 +136,28 @@ export function classifyWithReason(
 ): ClassificationResult {
   // Starred mail is owner-protected: never label-move, even if terms or blocklist would match.
   if (isGmailStarred(message.labelIds)) {
-    return { outcome: "protected", reason: "Starred in Gmail" };
+    return { outcome: "protected", reason: "Starred in Gmail", match: null };
   }
   const sender = parseMailboxAddress(message.from);
   if (!sender) {
-    return { outcome: "protected", reason: "Sender could not be parsed" };
+    return { outcome: "protected", reason: "Sender could not be parsed", match: null };
   }
   const whitelist = new Set(senderWhitelist.map((address) => parseMailboxAddress(address)).filter((address): address is string => address !== null));
   if (whitelist.has(sender)) {
-    return { outcome: "protected", reason: "Sender is on the whitelist" };
+    return { outcome: "protected", reason: "Sender is on the whitelist", match: null };
   }
   const blocklist = new Set(senderBlocklist.map((address) => parseMailboxAddress(address)).filter((address): address is string => address !== null));
   if (blocklist.has(sender)) {
-    return { outcome: "blocked", reason: "Sender is on the blocklist" };
+    return { outcome: "blocked", reason: "Sender is on the blocklist", match: null };
   }
 
-  const corpus = normalizeMatchText([message.from, message.replyTo, message.subject, message.bodyText].join("\n"));
-  const categories = [
-    ["priority", "priority", terms.priority],
-    ["review", "review", terms.review],
-    ["new", "new", terms.new],
-  ] as const;
-  for (const [outcome, label, configuredTerms] of categories) {
-    for (const term of normalizeTerms(configuredTerms)) {
-      if (termMatches(corpus, term)) {
-        return { outcome, reason: `Matched ${label} term “${term}”` };
-      }
-    }
+  const match = findClassificationMatch(message, terms);
+  if (match) {
+    return {
+      outcome: match.category,
+      reason: formatMatchEvidence(match),
+      match,
+    };
   }
-  return { outcome: "unmatched", reason: "No classification terms matched" };
+  return { outcome: "unmatched", reason: "No classification terms matched", match: null };
 }

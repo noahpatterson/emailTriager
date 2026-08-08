@@ -20,7 +20,9 @@ import {
 import { database, type Database } from "@/src/server/db";
 import {
   classifyWithReason,
+  formatMatchEvidence,
   type ClassificationTerms,
+  type TermMatchEvidence,
 } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
 import {
@@ -192,6 +194,7 @@ export class JudgeEvalService {
 
     const batchMessages: AuditBatchMessage[] = [];
     const ownerLabelByMessageId = new Map<string, Category>();
+    const matchByMessageId = new Map<string, TermMatchEvidence>();
 
     for (const row of holdout) {
       const parsed = parsedFromHoldout({
@@ -200,16 +203,19 @@ export class JudgeEvalService {
         subject: row.subject,
         bodyText: row.bodyText,
       });
-      const { outcome } = classifyWithReason(parsed, terms, whitelist, blocklist);
-      if (outcome === "protected") continue;
+      const { outcome, match } = classifyWithReason(parsed, terms, whitelist, blocklist);
+      if (outcome === "protected" || outcome === "blocked" || outcome === "unmatched") continue;
+      if (!match) continue;
       batchMessages.push({
         gmailMessageId: parsed.id,
         outcome,
         from: row.fromAddress,
+        replyTo: "",
         subject: row.subject,
         bodyText: row.bodyText,
       });
       ownerLabelByMessageId.set(parsed.id, row.ownerLabel as Category);
+      matchByMessageId.set(parsed.id, match);
     }
 
     if (batchMessages.length === 0) {
@@ -220,6 +226,7 @@ export class JudgeEvalService {
       messages: batchMessages,
       concurrency: options.concurrency ?? DEFAULT_AUDIT_CONCURRENCY,
       judge: async (message) => {
+        const match = matchByMessageId.get(message.gmailMessageId) ?? null;
         const prompt = assembleJudgePrompt({
           categoryIntent,
           message: {
@@ -227,6 +234,7 @@ export class JudgeEvalService {
             subject: message.subject,
             bodyText: message.bodyText,
             deterministicOutcome: message.outcome,
+            classifierMatch: match ? formatMatchEvidence(match) : null,
           },
           exemplars: exemplarsByCategory,
         });
