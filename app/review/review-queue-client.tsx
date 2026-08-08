@@ -191,12 +191,11 @@ export function ReviewQueueClient({
   const [syncRunId, setSyncRunId] = useState(
     initialQueue.syncRuns[0]?.id ?? initialQueue.syncRunId ?? "",
   );
-
-  useEffect(() => {
-    if (!syncRunId && queue.syncRuns[0]?.id) {
-      setSyncRunId(queue.syncRuns[0].id);
-    }
-  }, [queue.syncRuns, syncRunId]);
+  // Prefer an explicit selection; fall back when queue refresh brings runs in later.
+  const effectiveSyncRunId =
+    (syncRunId && queue.syncRuns.some((run) => run.id === syncRunId) ? syncRunId : null)
+    ?? queue.syncRuns[0]?.id
+    ?? "";
 
   const refresh = useCallback((nextMode: ReviewQueueMode = mode) => {
     setError(null);
@@ -205,14 +204,15 @@ export function ReviewQueueClient({
         const next = await loadQueue(nextMode);
         setQueue(next);
         setIndex(0);
-        if (next.syncRuns[0] && !next.syncRuns.some((run) => run.id === syncRunId)) {
-          setSyncRunId(next.syncRuns[0].id);
-        }
+        setSyncRunId((current) => {
+          if (current && next.syncRuns.some((run) => run.id === current)) return current;
+          return next.syncRuns[0]?.id ?? "";
+        });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Could not load review queue");
       }
     });
-  }, [mode, syncRunId]);
+  }, [mode]);
 
   const selectMode = useCallback((nextMode: ReviewQueueMode) => {
     setMode(nextMode);
@@ -220,13 +220,13 @@ export function ReviewQueueClient({
   }, [refresh]);
 
   const runAudit = useCallback(async () => {
-    if (!syncRunId || auditing || busy || pending) return;
+    if (!effectiveSyncRunId || auditing || busy || pending) return;
     const count = Math.max(1, Math.min(AUDIT_MAX_MESSAGES_CAP, Math.trunc(maxMessages) || 1));
     setAuditing(true);
     setError(null);
     setNotice(null);
     try {
-      const result = await startAudit({ syncRunId, maxMessages: count });
+      const result = await startAudit({ syncRunId: effectiveSyncRunId, maxMessages: count });
       setNotice(
         `Audit ${result.status}: judged ${result.processedCount} of ${result.totalEligible} eligible.`,
       );
@@ -236,7 +236,7 @@ export function ReviewQueueClient({
     } finally {
       setAuditing(false);
     }
-  }, [auditing, busy, maxMessages, mode, pending, refresh, syncRunId]);
+  }, [auditing, busy, effectiveSyncRunId, maxMessages, mode, pending, refresh]);
 
   const items = queue.items;
   const current = items[index] ?? null;
@@ -306,7 +306,7 @@ export function ReviewQueueClient({
             Sync run
             <select
               id="review-sync-run"
-              value={syncRunId}
+              value={effectiveSyncRunId}
               disabled={blocked || queue.syncRuns.length === 0}
               onChange={(event) => setSyncRunId(event.target.value)}
             >
@@ -360,7 +360,7 @@ export function ReviewQueueClient({
             <button
               type="button"
               className="button"
-              disabled={blocked || !syncRunId}
+              disabled={blocked || !effectiveSyncRunId}
               onClick={() => void runAudit()}
             >
               {auditing ? "Auditing…" : "Run audit"}
