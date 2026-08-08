@@ -11,6 +11,9 @@ if (!url) {
   throw new Error("DATABASE_URL or DATABASE_URL_UNPOOLED must be set for demo migrations");
 }
 
+/** Password for emailtriager_app (NOBYPASSRLS). Local Compose default; Neon public demo must set a strong secret. */
+const appPassword = process.env.DEMO_APP_DB_PASSWORD?.trim() || "emailtriager";
+
 const dir = path.join(process.cwd(), "db", "migrations-demo");
 const files = (await readdir(dir))
   .filter((name) => name.endsWith(".sql"))
@@ -52,6 +55,26 @@ try {
       throw error;
     }
   }
+
+  // Always (re)assert role flags + password so Neon/public unlock can rotate DEMO_APP_DB_PASSWORD.
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'emailtriager_app') THEN
+        CREATE ROLE emailtriager_app LOGIN NOSUPERUSER NOBYPASSRLS;
+      END IF;
+    END
+    $$
+  `);
+  await client.query(`ALTER ROLE emailtriager_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD $1`, [
+    appPassword,
+  ]);
+  await client.query(`
+    GRANT USAGE ON SCHEMA public TO emailtriager_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO emailtriager_app;
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO emailtriager_app;
+  `);
+  console.log("emailtriager_app role ready (NOBYPASSRLS); password from DEMO_APP_DB_PASSWORD");
 } finally {
   client.release();
   await pool.end();

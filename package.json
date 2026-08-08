@@ -18,6 +18,7 @@
     "db:migrate:demo": "bun run scripts/migrate-demo.ts",
     "db:check": "bun run scripts/check-migrations.ts",
     "db:check:demo": "bun run scripts/check-demo-migrations.ts",
+    "demo:cleanup": "bun run scripts/cleanup-demo.ts",
     "retention:run": "bun run scripts/run-retention.ts"
   },
   "dependencies": {

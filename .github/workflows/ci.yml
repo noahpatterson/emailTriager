@@ -18,6 +18,7 @@ jobs:
       - run: bun run lint
       - run: bun test
       - run: bun run db:check
+      - run: bun run db:check:demo
       # Same compile-time placeholders as Dockerfile builder (not real secrets).
       # /api/auth/[...path] evaluates getNeonAuth() → getServerConfig() at build.
       - name: Build
@@ -45,9 +46,16 @@ jobs:
       - name: Apply migrations
         env:
           DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          DEMO_APP_DB_PASSWORD: ${{ secrets.DEMO_APP_DB_PASSWORD }}
         run: |
           if [ -z "${DATABASE_URL_UNPOOLED}" ]; then
             echo "DATABASE_URL_UNPOOLED secret not set; skipping migrate until Terraform outputs are wired."
             exit 0
           fi
           bun run db:migrate
+          if [ -n "${DEMO_APP_DB_PASSWORD}" ]; then
+            echo "Applying demo migrations (emailtriager_app + RLS + rate limits)…"
+            bun run db:migrate:demo
+          else
+            echo "DEMO_APP_DB_PASSWORD unset; skipping db:migrate:demo (required for public demo unlock)."
+          fi

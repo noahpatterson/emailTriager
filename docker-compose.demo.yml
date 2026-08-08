@@ -41,6 +41,7 @@ services:
     environment:
       DATABASE_URL: postgresql://emailtriager:emailtriager@db:5432/email_triager_demo
       DATABASE_URL_UNPOOLED: postgresql://emailtriager:emailtriager@db:5432/email_triager_demo
+      DEMO_APP_DB_PASSWORD: emailtriager
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -1,14 +1,22 @@
 import "server-only";
-import { SlidingWindowRateLimiter } from "@/src/server/demo/rate-limit";
+import {
+  DEMO_SESSION_MINT_LIMIT,
+  DEMO_SYNC_LIMIT,
+  consumeDurableRateLimit,
+} from "@/src/server/demo/durable-rate-limit";
 
-/** Conservative free-tier defaults — new demo sessions per IP. */
-export const demoSessionMintLimiter = new SlidingWindowRateLimiter({
-  limit: 10,
-  windowMs: 60 * 60 * 1000,
-});
+export async function consumeDemoSessionMintLimit(ipKey: string) {
+  return consumeDurableRateLimit({
+    bucket: "demo_session_mint",
+    key: ipKey,
+    ...DEMO_SESSION_MINT_LIMIT,
+  });
+}
 
-/** Sync / trial POSTs per IP. */
-export const demoSyncLimiter = new SlidingWindowRateLimiter({
-  limit: 30,
-  windowMs: 60 * 1000,
-});
+export async function consumeDemoSyncLimit(ipKey: string) {
+  return consumeDurableRateLimit({
+    bucket: "demo_sync",
+    key: ipKey,
+    ...DEMO_SYNC_LIMIT,
+  });
+}

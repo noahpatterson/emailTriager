@@ -6,7 +6,8 @@ import {
   mintDemoSession,
   resolveDemoSessionOwner,
 } from "@/src/server/demo/bootstrap";
-import { demoSessionMintLimiter } from "@/src/server/demo/limiters";
+import { assertDemoDatabaseRoleSafe } from "@/src/server/demo/assert-db-role";
+import { consumeDemoSessionMintLimit } from "@/src/server/demo/limiters";
 import {
   DEMO_SESSION_COOKIE,
   DEMO_SESSION_TTL_MS,
@@ -33,8 +34,9 @@ export async function getDemoSession(): Promise<AuthSession> {
 
 export async function establishDemoSession(clientIp: string | null): Promise<{ ownerId: string }> {
   if (!isDemoProfile()) throw new Error("Demo sessions require APP_PROFILE=demo");
+  await assertDemoDatabaseRoleSafe();
   const ipKey = clientIp?.trim() || "unknown";
-  const limit = demoSessionMintLimiter.consume(ipKey);
+  const limit = await consumeDemoSessionMintLimit(ipKey);
   if (!limit.allowed) {
     throw new Error("Demo session rate limit exceeded. Try again later.");
   }

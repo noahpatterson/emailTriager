@@ -1,7 +1,7 @@
 import { withOwner } from "@/src/server/auth/owner";
 import { database } from "@/src/server/db";
 import { isDemoProfile } from "@/src/server/demo/ai-gate";
-import { demoSyncLimiter } from "@/src/server/demo/limiters";
+import { consumeDemoSyncLimit } from "@/src/server/demo/limiters";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { MessageSyncService } from "@/src/server/gmail/sync";
 import { clientIpFromHeaders } from "@/src/server/security/allowed-ips";
@@ -14,7 +14,7 @@ export async function POST(request: Request): Promise<Response> {
     requireSameOrigin(request);
     if (isDemoProfile()) {
       const ip = clientIpFromHeaders(request.headers)?.trim() || "unknown";
-      if (!demoSyncLimiter.consume(ip).allowed) {
+      if (!(await consumeDemoSyncLimit(ip)).allowed) {
         return Response.json(
           { error: "Demo sync rate limit exceeded. Try again shortly." },
           { status: 429 },

@@ -96,6 +96,8 @@ export async function withOwnerTransaction<T>(
 /** Demo request scope: nested `database()` calls reuse this transaction + SET LOCAL. */
 export async function withDemoOwnerScope<T>(ownerId: string, run: () => Promise<T>): Promise<T> {
   if (!isDemoProfile()) return run();
+  const { assertDemoDatabaseRoleSafe } = await import("@/src/server/demo/assert-db-role");
+  await assertDemoDatabaseRoleSafe();
   return withOwnerTransaction(ownerId, async (db, client) => {
     return demoDbAls.run({ ownerId, db, client }, run);
   });

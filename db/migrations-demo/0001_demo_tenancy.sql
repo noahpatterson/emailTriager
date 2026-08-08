@@ -1,8 +1,9 @@
--- App role that cannot bypass RLS (Compose superuser would otherwise ignore FORCE RLS).
+-- App role that cannot bypass RLS (Compose superuser / Neon owner would otherwise ignore FORCE RLS).
+-- Password is set by scripts/migrate-demo.ts from DEMO_APP_DB_PASSWORD (local default: emailtriager).
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'emailtriager_app') THEN
-    CREATE ROLE emailtriager_app LOGIN PASSWORD 'emailtriager' NOSUPERUSER NOBYPASSRLS;
+    CREATE ROLE emailtriager_app LOGIN NOSUPERUSER NOBYPASSRLS;
   END IF;
 END
 $$;

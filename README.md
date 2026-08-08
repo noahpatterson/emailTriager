@@ -212,6 +212,59 @@ docker compose -f docker-compose.demo.yml up --build
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000) → **Start demo session** → **Run sync**. Use **Clear my demo data** from the account menu to wipe the visitor. Demo migrations are never applied by production `db:migrate` (use `bun run db:migrate:demo` after prod migrate when developing without Compose).
 
+### Unlock public demo on Vercel
+
+Confirm the demo locally with [§1b](#1b-public-demo-docker-local-confirmation) first. The IP-locked spike (`TF_VAR_deployment_mode=spike`) must **not** go public with the Neon owner `DATABASE_URL` — that role bypasses RLS and voids visitor isolation.
+
+**Hard requirements before opening the app:**
+
+1. Runtime `DATABASE_URL` is `emailtriager_app` with `NOBYPASSRLS` (never the Neon owner).
+2. Production + demo migrations are applied (`db:migrate` then `db:migrate:demo`).
+3. `APP_PROFILE=demo`, `DATABASE_DRIVER=pg`, empty `ALLOWED_CIDRS`, no Vercel Firewall allowlist, no insecure-local flags.
+4. Google OAuth stays placeholder-disabled; AI/audit/review routes stay gated.
+
+**Steps**
+
+1. Generate a strong app-role password (≥16 chars) and store it in two places with the **same** value:
+   - `services/.env`: `TF_VAR_demo_app_db_password=…`
+   - GitHub Actions secret: `DEMO_APP_DB_PASSWORD`
+2. Keep CI secret `DATABASE_URL_UNPOOLED` as the Neon **owner** direct URI (Terraform output `DATABASE_URL_UNPOOLED`) so migrations can create roles.
+3. In `services/.env`:
+
+   ```sh
+   TF_VAR_deployment_mode=demo
+   TF_VAR_demo_app_db_password=<same as DEMO_APP_DB_PASSWORD>
+   # leave TF_VAR_allowed_cidrs empty or unused in demo mode
+   ```
+
+4. Apply Terraform (destroys the spike Firewall rule; rewrites Vercel env for demo):
+
+   ```sh
+   cd services
+   set -a && source .env && set +a
+   terraform plan   # expect: Firewall destroyed, APP_PROFILE=demo, DATABASE_URL → emailtriager_app
+   terraform apply
+   ```
+
+   If this project already had spike state, move resources once if Terraform asks:
+
+   ```sh
+   terraform state mv 'vercel_project_environment_variable.spike' 'vercel_project_environment_variable.app'
+   terraform state mv 'vercel_firewall_config.spike' 'vercel_firewall_config.spike[0]'
+   ```
+
+5. Push to `main` (or re-run the `migrate` workflow) so CI runs `db:migrate` then `db:migrate:demo`. Until `emailtriager_app` exists with the matching password, the app refuses to serve demo traffic (`assertDemoDatabaseRoleSafe`).
+6. Schedule cleanup (required for a long-lived public demo): `DATABASE_URL_UNPOOLED=<owner URI> bun run demo:cleanup` (daily) to wipe expired visitors and prune rate-limit hits.
+7. Smoke from any network:
+   - `GET /api/health` → `{"ok":true}`
+   - Start demo session → Run sync → fixture mailbox works
+   - `POST /api/audit` (or review) → demo AI disabled / explainer
+   - Second browser / private window cannot see the first visitor’s data
+
+**Do not** unlock by only clearing `ALLOWED_CIDRS` while leaving the Neon owner URL in Vercel.
+
+Details for Terraform variables: [`services/README.md`](services/README.md).
+
 ### 2. Neon production Docker build
 
 Runs the same app image against **Neon Postgres + Neon Auth**. No local Postgres. Insecure local mode is forced off.

@@ -35,7 +35,7 @@ variable "github_repo" {
 
 variable "placeholder_token_encryption_key" {
   type        = string
-  description = "Placeholder TOKEN_ENCRYPTION_KEY_V1 for the spike (replace before real OAuth)."
+  description = "Placeholder TOKEN_ENCRYPTION_KEY_V1 for the spike/demo (replace before real OAuth)."
   default     = "spike-placeholder-token-encryption-key-v1"
   sensitive   = true
 }
@@ -47,14 +47,32 @@ variable "placeholder_neon_auth_cookie_secret" {
   sensitive   = true
 }
 
+variable "deployment_mode" {
+  type        = string
+  description = "spike = IP-locked personal deploy; demo = public APP_PROFILE=demo with emailtriager_app (NOBYPASSRLS)."
+  default     = "spike"
+
+  validation {
+    condition     = contains(["spike", "demo"], var.deployment_mode)
+    error_message = "deployment_mode must be \"spike\" or \"demo\"."
+  }
+}
+
+variable "demo_app_db_password" {
+  type        = string
+  description = "Password for emailtriager_app (NOBYPASSRLS). Required when deployment_mode=demo; must match CI secret DEMO_APP_DB_PASSWORD used by db:migrate:demo."
+  default     = ""
+  sensitive   = true
+}
+
 variable "allowed_cidrs" {
   type        = string
-  description = "Comma-separated IPv4 addresses/CIDRs allowed at the Vercel Firewall and via ALLOWED_CIDRS in the app. Example: 203.0.113.10 or 203.0.113.0/24"
+  description = "Comma-separated IPv4 addresses/CIDRs allowed at the Vercel Firewall and via ALLOWED_CIDRS in the app. Required for spike mode; leave empty for public demo."
   default     = ""
 }
 
 variable "enable_vercel_trusted_ips" {
   type        = bool
-  description = "Also enable Vercel platform Trusted IPs (requires a plan that includes Trusted IPs). App-level ALLOWED_CIDRS still applies."
+  description = "Also enable Vercel platform Trusted IPs (requires a plan that includes Trusted IPs). App-level ALLOWED_CIDRS still applies. Ignored in demo mode."
   default     = false
 }
