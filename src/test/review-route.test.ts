@@ -68,6 +68,18 @@ describe("GET /api/review/queue", () => {
       return {
         auditRunId: "audit-1",
         syncRunId: "sync-1",
+        verdictCount: 1,
+        candidateCount: 1,
+        unlabeledCount: 1,
+        pendingCount: 1,
+        mode: "stratified",
+        syncRuns: [{
+          id: "sync-1",
+          status: "completed",
+          trial: false,
+          startedAt: "2026-08-08T00:00:00.000Z",
+          finishedAt: "2026-08-08T00:01:00.000Z",
+        }],
         categoryIntent: {
           priority: "p",
           review: "r",
@@ -108,7 +120,7 @@ describe("GET /api/review/queue", () => {
 });
 
 describe("POST /api/review/:messageId", () => {
-  test("persists owner label without Gmail mutation surface", async () => {
+  test("persists owner label and reports Gmail apply result", async () => {
     ownerImpl = async () => ({ userId: "owner-1" });
     submitImpl = async (ownerId, messageId, ownerLabel) => {
       expect(ownerId).toBe("owner-1");
@@ -120,6 +132,7 @@ describe("POST /api/review/:messageId", () => {
         goldenSetId: 9,
         partition: "holdout",
         created: true,
+        gmailApplied: true,
       };
     };
     const response = await POST(postRequest("msg/1", { ownerLabel: "priority" }), {
@@ -130,11 +143,12 @@ describe("POST /api/review/:messageId", () => {
       partition: string;
       created: boolean;
       ownerLabel: string;
+      gmailApplied: boolean;
     };
     expect(body.partition).toBe("holdout");
     expect(body.created).toBe(true);
     expect(body.ownerLabel).toBe("priority");
-    expect(JSON.stringify(body)).not.toContain("modifyLabels");
+    expect(body.gmailApplied).toBe(true);
   });
 
   test("rejects cross-origin requests", async () => {

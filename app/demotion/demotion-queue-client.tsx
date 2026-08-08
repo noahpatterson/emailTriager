@@ -97,6 +97,9 @@ export function DemotionQueueClient({
         <button type="button" className="button" disabled={blocked} onClick={refresh}>
           {pending ? "Refreshing…" : "Refresh"}
         </button>
+        <p className="review-action-notes">
+          Refresh reloads the pending demotion queue from the latest audit results.
+        </p>
         {error ? <p className="error-text" role="alert">{error}</p> : null}
       </section>
     );
@@ -109,7 +112,6 @@ export function DemotionQueueClient({
           {index + 1} of {items.length}
           {queue.pendingCount > items.length ? ` · ${queue.pendingCount} pending` : ""}
         </p>
-        <p className="review-queue-keys">Confirm applies the archive label in Gmail</p>
       </div>
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       {current ? (
@@ -119,10 +121,48 @@ export function DemotionQueueClient({
             <p><strong>From</strong> {current.from}</p>
             <p><strong>Subject</strong> {current.subject || "(no subject)"}</p>
             <pre className="review-excerpt">{current.bodyExcerpt || "(no snapshot excerpt)"}</pre>
+            {current.gmailUrl ? (
+              <p>
+                <a
+                  className="review-gmail-link"
+                  href={current.gmailUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open full message in Gmail
+                </a>
+              </p>
+            ) : (
+              <p className="review-gmail-missing">No Gmail thread link for this snapshot.</p>
+            )}
           </article>
           <article className="review-panel">
-            <h2>Demotion</h2>
-            <p><strong>Judge recommends</strong> {current.recommendedCategory}</p>
+            <h2>Filing vs Verdict</h2>
+            <p>
+              <strong>Deterministic</strong>{" "}
+              {current.deterministicOutcome ?? "—"}
+            </p>
+            <p>
+              <strong>Matched term</strong>{" "}
+              {current.matchedTerm ? `“${current.matchedTerm}”` : "— (no keyword match)"}
+            </p>
+            <div>
+              <p><strong>Judge match snippet</strong></p>
+              {current.classifierMatchSnippet ? (
+                <pre className="review-excerpt">{current.classifierMatchSnippet}</pre>
+              ) : (
+                <p className="review-gmail-missing">No classifier snippet sent to the judge.</p>
+              )}
+            </div>
+            <p>
+              <strong>Verdict</strong>{" "}
+              {current.agreesWithFiling === false
+                ? "Disagreement"
+                : current.agreesWithFiling === true
+                  ? "Agreement"
+                  : "Unknown"}
+              {` → ${current.recommendedCategory}`}
+            </p>
             <p><strong>Rationale</strong> {current.rationale ?? "—"}</p>
           </article>
         </div>
@@ -143,6 +183,10 @@ export function DemotionQueueClient({
           {pending ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+      <p className="review-action-notes">
+        Confirm applies the archive label in Gmail. Skip leaves this item pending and shows the next one.
+        Refresh reloads the queue.
+      </p>
     </section>
   );
 }

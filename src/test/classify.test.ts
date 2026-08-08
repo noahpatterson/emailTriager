@@ -98,30 +98,45 @@ describe("local deterministic classification", () => {
     expect(classifyWithReason(message({ labelIds: ["STARRED"], subject: "urgent" }), terms, [])).toEqual({
       outcome: "protected",
       reason: "Starred in Gmail",
+      match: null,
     });
     expect(classifyWithReason(message({ from: "Sender Name", subject: "urgent" }), terms, [])).toEqual({
       outcome: "protected",
       reason: "Sender could not be parsed",
+      match: null,
     });
     expect(classifyWithReason(message({ subject: "urgent" }), terms, ["sender@example.com"])).toEqual({
       outcome: "protected",
       reason: "Sender is on the whitelist",
+      match: null,
     });
     expect(classifyWithReason(message({ from: "Spam <spam@example.com>" }), terms, [], ["spam@example.com"])).toEqual({
       outcome: "blocked",
       reason: "Sender is on the blocklist",
+      match: null,
     });
     expect(classifyWithReason(message({ bodyText: "This is URGENT!" }), terms, [])).toEqual({
       outcome: "priority",
-      reason: "Matched priority term “urgent”",
+      reason: "Matched priority term “urgent” near «sender <sender@example.com> this is urgent!»",
+      match: {
+        category: "priority",
+        term: "urgent",
+        excerpt: "sender <sender@example.com> this is urgent!",
+      },
     });
     expect(classifyWithReason(message({ subject: "review me please" }), terms, [])).toEqual({
       outcome: "review",
-      reason: "Matched review term “review me”",
+      reason: "Matched review term “review me” near «sender <sender@example.com> review me please»",
+      match: {
+        category: "review",
+        term: "review me",
+        excerpt: "sender <sender@example.com> review me please",
+      },
     });
     expect(classifyWithReason(message({ subject: "hello" }), terms, [])).toEqual({
       outcome: "unmatched",
       reason: "No classification terms matched",
+      match: null,
     });
   });
 

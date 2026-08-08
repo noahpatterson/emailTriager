@@ -20,6 +20,8 @@ import {
 import { database, type Database } from "@/src/server/db";
 import {
   classifyWithReason,
+  findClassificationMatch,
+  formatMatchEvidence,
   type ClassificationTerms,
 } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
@@ -201,11 +203,14 @@ export class JudgeEvalService {
         bodyText: row.bodyText,
       });
       const { outcome } = classifyWithReason(parsed, terms, whitelist, blocklist);
-      if (outcome === "protected") continue;
+      if (outcome === "protected" || outcome === "blocked" || outcome === "unmatched") continue;
+      // Same keyword gate as shadow audit: no term ⇒ nothing for the snippet-only judge.
+      if (!findClassificationMatch(parsed, terms)) continue;
       batchMessages.push({
         gmailMessageId: parsed.id,
         outcome,
         from: row.fromAddress,
+        replyTo: "",
         subject: row.subject,
         bodyText: row.bodyText,
       });
@@ -220,6 +225,15 @@ export class JudgeEvalService {
       messages: batchMessages,
       concurrency: options.concurrency ?? DEFAULT_AUDIT_CONCURRENCY,
       judge: async (message) => {
+        const match = findClassificationMatch(
+          {
+            from: message.from,
+            replyTo: message.replyTo,
+            subject: message.subject,
+            bodyText: message.bodyText,
+          },
+          terms,
+        );
         const prompt = assembleJudgePrompt({
           categoryIntent,
           message: {
@@ -227,6 +241,7 @@ export class JudgeEvalService {
             subject: message.subject,
             bodyText: message.bodyText,
             deterministicOutcome: message.outcome,
+            classifierMatch: match ? formatMatchEvidence(match) : null,
           },
           exemplars: exemplarsByCategory,
         });

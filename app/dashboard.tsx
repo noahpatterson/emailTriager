@@ -3,10 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { BrandLogo } from "@/app/brand-logo";
-import { SignOutButton } from "@/app/auth/sign-out-button";
+import { GmailLabelJumpLinks } from "@/app/gmail-label-jumps";
+import { OwnerNav } from "@/app/owner-nav";
+import type { OwnerUser } from "@/app/owner-user";
+import { UserMenu } from "@/app/user-menu";
 import { DeleteRunButton } from "@/app/delete-run-button";
 import { RunResultsList, type RunResultRow } from "@/app/run-results";
 import { formatRunTime, runMessage, type RunStatus } from "@/app/run-status";
+import type { GmailLabelJump } from "@/src/server/gmail/gmail-url";
 
 export type { RunStatus } from "@/app/run-status";
 export { formatRunTime, runMessage } from "@/app/run-status";
@@ -24,9 +28,10 @@ export type DashboardState = Readonly<{
   connected: boolean;
   configured: boolean;
   gmailMessageLinkRoot: string;
+  gmailLabelJumps: readonly GmailLabelJump[];
   runs: readonly DashboardRun[];
 }>;
-export type DashboardUser = Readonly<{ name: string; email: string }>;
+export type DashboardUser = OwnerUser;
 
 export type TrialResultRow = RunResultRow;
 
@@ -48,33 +53,6 @@ async function post(path: string, body?: unknown): Promise<Response> {
     redirect: "manual",
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-}
-
-function UserMenu({ user }: { user: DashboardUser }) {
-  const name = user.name.trim();
-  const label = name || user.email || "Owner";
-  return (
-    <details className="user-menu">
-      <summary className="user-menu-trigger" aria-label={`Account menu for ${label}`}>
-        <span className="user-menu-avatar" aria-hidden="true">{label.slice(0, 1).toUpperCase()}</span>
-        <span className="user-menu-label">
-          <strong>{label}</strong>
-          {name ? <small>{user.email}</small> : null}
-        </span>
-      </summary>
-      <div className="user-menu-panel" role="menu">
-        <div className="user-menu-current">
-          <p>Signed in as</p>
-          <strong>{name || "Owner"}</strong>
-          <span>{user.email}</span>
-        </div>
-        <Link className="user-menu-link" href="/review" role="menuitem">Review</Link>
-        <Link className="user-menu-link" href="/demotion" role="menuitem">Demotions</Link>
-        <Link className="user-menu-link" href="/settings" role="menuitem">Settings</Link>
-        <SignOutButton className="user-menu-sign-out" />
-      </div>
-    </details>
-  );
 }
 
 export function Dashboard({ initialState, user }: { initialState: DashboardState; user: DashboardUser }) {
@@ -184,6 +162,7 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
           <p className="eyebrow">OWNER CONSOLE</p>
           <h1>Email Triage</h1>
           <p className="lede">Sort a bounded set of Gmail messages with deterministic, local rules.</p>
+          <OwnerNav active="home" />
         </div>
       </div>
       <div className="hero-aside">
@@ -290,6 +269,19 @@ export function Dashboard({ initialState, user }: { initialState: DashboardState
         )}
       </article>
     </section>
+
+    {state.gmailLabelJumps.length > 0 ? (
+      <section className="card gmail-label-jumps-card" aria-label="Gmail label shortcuts">
+        <p className="step">GMAIL LABELS</p>
+        <h2>Jump to a label</h2>
+        <p>Open each triage label in Gmail to manually review what’s filed there.</p>
+        <GmailLabelJumpLinks
+          links={state.gmailLabelJumps}
+          heading="Jump to a label"
+          showHeading={false}
+        />
+      </section>
+    ) : null}
 
     {trialMode && (
       <section className="history trial-results" aria-label="Trial results">

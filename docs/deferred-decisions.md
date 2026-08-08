@@ -16,9 +16,9 @@ An audit run is triggered manually. The intended end state is that it fires auto
 
 **Status:** deferred · **Relates to:** ADR-0004
 
-Human review records an owner label and scores the judge; it never re-files the message. Making it re-file would require the verdict to be pinned durably, or the next audit run would simply override the human again. `gmail_message_state` is already shaped to hold that.
+Human review now records an Owner Label **and** re-files the message in Gmail. Without a pinned/sticky verdict, a later audit run can still disagree and enqueue demotion or auto-promote again. `gmail_message_state` is already shaped to hold that pin.
 
-**To decide:** whether re-filing is wanted at all; if so, whether a pinned verdict suppresses future verdicts on that message permanently or only until the category intent changes.
+**To decide:** whether a pinned owner verdict suppresses future audit mutations on that message permanently, only until category intent changes, or never (accept occasional re-contest).
 
 ## D-3 — Additional observability exporters
 

@@ -45,7 +45,7 @@ describe("POST /api/audit", () => {
     const service = stubService({
       start: async (ownerId, options) => {
         expect(ownerId).toBe("owner-1");
-        expect(options).toEqual({ syncRunId: "sync-1", auditRunId: undefined });
+        expect(options).toEqual({ syncRunId: "sync-1", auditRunId: undefined, maxMessages: undefined });
         return {
           id: "audit-1",
           syncRunId: "sync-1",
@@ -72,11 +72,55 @@ describe("POST /api/audit", () => {
     });
   });
 
+  test("passes maxMessages when provided", async () => {
+    ownerImpl = async () => ({ userId: "owner-1" });
+    const service = stubService({
+      start: async (_ownerId, options) => {
+        expect(options).toEqual({
+          syncRunId: "sync-1",
+          auditRunId: undefined,
+          maxMessages: 7,
+        });
+        return {
+          id: "audit-1",
+          syncRunId: "sync-1",
+          status: "completed",
+          processedCount: 7,
+          totalEligible: 20,
+          nextCursor: "m8",
+          malformedCount: 0,
+          errorCode: null,
+        };
+      },
+    });
+    const response = await handleAuditPost(
+      postRequest({ syncRunId: "sync-1", maxMessages: 7 }),
+      service,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  test("rejects out-of-range maxMessages", async () => {
+    ownerImpl = async () => ({ userId: "owner-1" });
+    const response = await handleAuditPost(
+      postRequest({ syncRunId: "sync-1", maxMessages: 0 }),
+      stubService({}),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "maxMessages must be between 1 and 100.",
+    });
+  });
+
   test("passes trimmed auditRunId for resume", async () => {
     ownerImpl = async () => ({ userId: "owner-1" });
     const service = stubService({
       start: async (_ownerId, options) => {
-        expect(options).toEqual({ syncRunId: "sync-1", auditRunId: "audit-1" });
+        expect(options).toEqual({
+          syncRunId: "sync-1",
+          auditRunId: "audit-1",
+          maxMessages: undefined,
+        });
         return {
           id: "audit-1",
           syncRunId: "sync-1",
@@ -100,7 +144,7 @@ describe("POST /api/audit", () => {
     ownerImpl = async () => ({ userId: "owner-1" });
     const service = stubService({
       start: async (_ownerId, options) => {
-        expect(options).toEqual({ syncRunId: "sync-1", auditRunId: undefined });
+        expect(options).toEqual({ syncRunId: "sync-1", auditRunId: undefined, maxMessages: undefined });
         return {
           id: "audit-2",
           syncRunId: "sync-1",
@@ -155,17 +199,19 @@ describe("POST /api/audit", () => {
     });
   });
 
-  test("returns 400 when sync run is not completed", async () => {
+  test("returns 400 when sync run is not finished", async () => {
     ownerImpl = async () => ({ userId: "owner-1" });
     const service = stubService({
       start: async () => {
-        throw new AuditClientError("Audit requires a completed sync run");
+        throw new AuditClientError(
+          "Audit requires a finished sync run (completed, bounded incomplete, or partial failure).",
+        );
       },
     });
     const response = await handleAuditPost(postRequest({ syncRunId: "sync-1" }), service);
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "Audit requires a completed sync run",
+      error: "Audit requires a finished sync run (completed, bounded incomplete, or partial failure).",
     });
   });
 

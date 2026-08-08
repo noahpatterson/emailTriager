@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { BrandLogo } from "@/app/brand-logo";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { ArchiveTrashPanel } from "@/app/settings/archive-trash";
+import { OwnerNav } from "@/app/owner-nav";
+import { ownerUserFromSession } from "@/app/owner-user";
+import { UserMenu } from "@/app/user-menu";
 import { gmailConnection, triageConfig } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
 import { getSession } from "@/src/server/auth/session";
@@ -40,6 +43,8 @@ export default async function SettingsPage() {
       .limit(1),
   ]);
 
+  const user = ownerUserFromSession(data.user);
+
   return <main className="shell">
     <header className="hero">
       <div className="brand-heading">
@@ -48,9 +53,12 @@ export default async function SettingsPage() {
           <p className="eyebrow">OWNER CONSOLE</p>
           <h1>Settings</h1>
           <p className="lede">How triage uses Gmail, where to edit configuration, and owner tools that can change mailbox state.</p>
+          <OwnerNav active="settings" />
         </div>
       </div>
-      <Link className="back-link" href="/">← Back to Email Triage</Link>
+      <div className="hero-aside">
+        <UserMenu user={user} />
+      </div>
     </header>
 
     <section className="history" aria-label="How triage works in Gmail">

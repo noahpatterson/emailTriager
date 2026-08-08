@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   auditRun,
+  messageProcessing,
   messageSnapshot,
   pendingDemotion,
   syncLease,
@@ -15,9 +16,16 @@ import {
   verdict,
 } from "@/db/schema";
 import { getServerConfig } from "@/src/config/server";
+import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
+import { asTerms } from "@/src/server/config/triage-validate";
 import { database, type Database } from "@/src/server/db";
 import type { GmailProvider } from "@/src/server/gmail/contracts";
+import {
+  findClassificationMatch,
+  type ClassificationOutcome,
+} from "@/src/server/gmail/classify";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
+import { gmailMessageUrl } from "@/src/server/gmail/gmail-url";
 import { decryptMessageSnapshotPayload } from "@/src/server/gmail/message-snapshot";
 import { truncatePromptBody } from "@/src/server/gmail/judge-prompt";
 import { parseGmailMessage, type GmailMessage } from "@/src/server/gmail/message";
@@ -83,6 +91,15 @@ export class DemotionService {
     await this.ensureOwnerBinding(ownerId);
     const pageSize = options.pageSize ?? DEFAULT_DEMOTION_PAGE_SIZE;
     const offset = options.offset ?? 0;
+    const linkRoot = await new OwnerPreferencesService(this.db).getGmailMessageLinkRoot(ownerId);
+
+    const [config] = await this.db
+      .select({ terms: triageConfig.terms })
+      .from(triageConfig)
+      .where(eq(triageConfig.ownerAuthUserId, ownerId))
+      .orderBy(desc(triageConfig.version))
+      .limit(1);
+    const terms = config ? asTerms(config.terms) : null;
 
     const [countRow] = await this.db
       .select({ value: count() })
@@ -98,7 +115,10 @@ export class DemotionService {
         verdictId: pendingDemotion.verdictId,
         createdAt: pendingDemotion.createdAt,
         rationale: verdict.rationale,
+        agreesWithFiling: verdict.agreesWithFiling,
         encryptedPayload: messageSnapshot.encryptedPayload,
+        gmailThreadId: messageProcessing.gmailThreadId,
+        outcome: messageProcessing.outcome,
       })
       .from(pendingDemotion)
       .innerJoin(verdict, eq(pendingDemotion.verdictId, verdict.id))
@@ -111,6 +131,13 @@ export class DemotionService {
           eq(messageSnapshot.runId, auditRun.syncRunId),
         ),
       )
+      .leftJoin(
+        messageProcessing,
+        and(
+          eq(messageProcessing.runId, auditRun.syncRunId),
+          eq(messageProcessing.gmailMessageId, pendingDemotion.gmailMessageId),
+        ),
+      )
       .where(openDemotionFilter(ownerId))
       .orderBy(desc(pendingDemotion.createdAt))
       .limit(pageSize)
@@ -120,22 +147,47 @@ export class DemotionService {
       let subject = "";
       let from = "";
       let bodyExcerpt = "";
+      let matchedTerm: string | null = null;
+      let classifierMatchSnippet: string | null = null;
       if (row.encryptedPayload) {
         try {
           const payload = decryptMessageSnapshotPayload(row.encryptedPayload, this.encryptionKey);
           subject = payload.subject;
           from = payload.from;
           bodyExcerpt = truncatePromptBody(payload.bodyText, DEMOTION_SNAPSHOT_EXCERPT_CHARS);
+          if (terms) {
+            const match = findClassificationMatch(
+              {
+                from: payload.from,
+                replyTo: payload.replyTo,
+                subject: payload.subject,
+                bodyText: payload.bodyText,
+              },
+              terms,
+            );
+            matchedTerm = match?.term ?? null;
+            classifierMatchSnippet = match?.excerpt ?? null;
+          }
         } catch {
           // Snapshot decrypt failure — still list the row with empty excerpt.
         }
       }
+      const threadId = row.gmailThreadId?.trim() || null;
       return {
         id: row.id,
         gmailMessageId: row.gmailMessageId,
+        gmailThreadId: threadId,
+        gmailUrl: gmailMessageUrl(
+          { gmailMessageId: row.gmailMessageId, gmailThreadId: threadId },
+          linkRoot,
+        ),
         verdictId: row.verdictId,
         recommendedCategory: "archive",
         rationale: row.rationale,
+        agreesWithFiling: row.agreesWithFiling,
+        deterministicOutcome: (row.outcome as ClassificationOutcome | "failed" | null) ?? null,
+        matchedTerm,
+        classifierMatchSnippet,
         subject,
         from,
         bodyExcerpt,

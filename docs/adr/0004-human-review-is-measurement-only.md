@@ -1,11 +1,11 @@
-# Human review produces ground truth and never touches Gmail
+# Human review records ground truth and re-files in Gmail
 
-Reviewing a verdict records an **Owner Label** and scores the judge. It does not re-file the message. The owner already has a perfectly good tool for moving one email by hand, and the remediation channel for a systematic error is improving category intent and term lists — not hand-holding individual messages.
+Reviewing a verdict records an **Owner Label** into the Golden Set (holdout) **and** applies that category’s Gmail label via the same re-file path used for promotions and confirmed demotions. The owner’s button press is the authoritative filing: measurement and mailbox stay aligned.
 
-Review is stratified: every disagreement is queued, because they are rare, high-impact, and each has already mutated the mailbox; plus a configurable share of agreements, around ten percent, because that is the only thing capable of surfacing what the judge waves through incorrectly. Reviewing disagreements alone would measure false positives precisely and stay permanently blind to false negatives.
+Review remains stratified: every disagreement is queued, because they are rare and high-impact; plus a configurable share of agreements, around ten percent, so false negatives are visible. The queue still **reads** the stored snapshot (not live Gmail) for evidence, so labeling works against what the judge saw even if the live message has moved.
+
+Starred / protected messages keep the Golden Set write but skip Gmail mutation. Open pending demotions for the same message are cancelled once the owner labels in review.
 
 ## Consequences
 
-A closed loop where the owner's verdict re-files the message would need a sticky per-message verdict to stop the next audit run overriding the human again. Durable per-message state is already shaped to hold that, so the loop stays available later — but it is deliberately not built now.
-
-Review reads the stored snapshot, not live Gmail, because by review time the message may have been hand-moved, relabeled, or trashed. This also means the review queue works with no network at all.
+Owner Labels both train eval and correct the mailbox immediately. A later audit may still disagree with the human label unless durable per-message stickiness is added; that remains available later via existing durable state, but is not required for this loop.
