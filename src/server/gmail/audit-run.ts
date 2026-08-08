@@ -16,6 +16,7 @@ import { getServerConfig } from "@/src/config/server";
 import {
   asAutoApplyPromotions,
   asCategoryIntent,
+  asTerms,
   hasCompleteCategoryIntent,
 } from "@/src/server/config/triage-validate";
 import { database, type Database } from "@/src/server/db";
@@ -28,6 +29,11 @@ import {
 import { buildAuditCandidates } from "@/src/server/gmail/audit-candidates";
 import { decideAuditMutation } from "@/src/server/gmail/audit-mutation";
 import type { GmailProvider } from "@/src/server/gmail/contracts";
+import {
+  findClassificationMatch,
+  formatMatchEvidence,
+  type ClassificationOutcome,
+} from "@/src/server/gmail/classify";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { JudgeTransportError, judgeMessage } from "@/src/server/gmail/judge";
 import {
@@ -52,7 +58,6 @@ import {
   createAuditTracer,
   type AuditTracer,
 } from "@/src/server/observability/tracer";
-import type { ClassificationOutcome } from "@/src/server/gmail/classify";
 import type { Category } from "@/src/server/gmail/corpus";
 import { reconcileCategoryFiling } from "@/src/server/gmail/sync";
 
@@ -77,6 +82,19 @@ export type AuditRunStatus =
   | "completed"
   | "partial_failure"
   | "failed";
+
+/** Sync runs that finished processing and have snapshots eligible for audit. */
+export const AUDITABLE_SYNC_RUN_STATUSES = [
+  "completed",
+  "bounded_incomplete",
+  "partial_failure",
+] as const;
+
+export type AuditableSyncRunStatus = (typeof AUDITABLE_SYNC_RUN_STATUSES)[number];
+
+export function isAuditableSyncRunStatus(status: string): status is AuditableSyncRunStatus {
+  return (AUDITABLE_SYNC_RUN_STATUSES as readonly string[]).includes(status);
+}
 
 export class AuditLeaseLostError extends Error {
   readonly code = "lease_lost" as const;
@@ -207,6 +225,7 @@ export class AuditRunService {
       .select({
         categoryIntent: triageConfig.categoryIntent,
         autoApplyPromotions: triageConfig.autoApplyPromotions,
+        terms: triageConfig.terms,
         sourceLabelId: triageConfig.sourceLabelId,
         priorityLabelId: triageConfig.priorityLabelId,
         reviewLabelId: triageConfig.reviewLabelId,
@@ -225,6 +244,7 @@ export class AuditRunService {
       );
     }
     const autoApplyPromotions = asAutoApplyPromotions(config.autoApplyPromotions);
+    const terms = asTerms(config.terms);
     const labels = {
       sourceLabelId: config.sourceLabelId,
       priorityLabelId: config.priorityLabelId,
@@ -242,8 +262,10 @@ export class AuditRunService {
       .where(and(eq(syncRun.id, options.syncRunId), eq(syncRun.ownerAuthUserId, ownerId)))
       .limit(1);
     if (!sync) throw new AuditClientError("Sync run not found");
-    if (sync.status !== "completed") {
-      throw new AuditClientError("Audit requires a completed sync run");
+    if (!isAuditableSyncRunStatus(sync.status)) {
+      throw new AuditClientError(
+        "Audit requires a finished sync run (completed, bounded incomplete, or partial failure).",
+      );
     }
 
     let resumeRunId = options.auditRunId ?? null;
@@ -376,6 +398,8 @@ export class AuditRunService {
         })),
         encryptionKey,
         alreadyJudgedIds: alreadyJudged,
+        // Only priority/review/new — skip archive, blocked, whitelist/protected.
+        terms,
       });
       const allCandidates = built.candidates;
       const decryptFailureCount = built.decryptFailures.length;
@@ -422,6 +446,15 @@ export class AuditRunService {
           concurrency,
           judge: async (message: AuditBatchMessage) => {
             await renewLease();
+            const match = findClassificationMatch(
+              {
+                from: message.from,
+                replyTo: message.replyTo,
+                subject: message.subject,
+                bodyText: message.bodyText,
+              },
+              terms,
+            );
             const prompt = assembleJudgePrompt({
               categoryIntent,
               message: {
@@ -429,6 +462,7 @@ export class AuditRunService {
                 subject: message.subject,
                 bodyText: message.bodyText,
                 deterministicOutcome: message.outcome,
+                classifierMatch: match ? formatMatchEvidence(match) : null,
               },
               exemplars: exemplarsByCategory,
             });

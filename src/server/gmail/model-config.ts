@@ -51,6 +51,9 @@ export function createJudgeModel(config: ModelRuntimeConfig = getModelConfig()):
     name: config.provider,
     baseURL: config.baseUrl,
     apiKey: config.apiKey,
+    // Without this, the SDK falls back to response_format=json_object, and OpenAI
+    // 400s unless the prompt contains the word "json" — surfaced as judge_transport.
+    supportsStructuredOutputs: true,
   });
   return provider.chatModel(config.modelName);
 }

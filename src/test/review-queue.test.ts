@@ -13,7 +13,12 @@ function candidate(
 ): ReviewQueueCandidate {
   return {
     verdictId: 1,
+    gmailThreadId: "thread-1",
+    gmailUrl: "https://mail.google.com/mail/u/0/#all/thread-1",
     deterministicOutcome: "new",
+    outcomeReason: null,
+    matchedTerm: null,
+    classifierMatchSnippet: null,
     recommendedCategory: "new",
     rationale: "ok",
     malformed: false,
@@ -25,33 +30,61 @@ function candidate(
 }
 
 describe("review queue stratification", () => {
-  test("includes every disagreement", () => {
+  test("includes every disagreement plus a fixed agreement sample", () => {
     const items = [
       candidate({ gmailMessageId: "d1", agreesWithFiling: false }),
       candidate({ gmailMessageId: "d2", agreesWithFiling: false }),
       candidate({ gmailMessageId: "a1", agreesWithFiling: true }),
     ];
     const queue = selectReviewQueueItems(items, {
-      random: () => 0.99,
+      // Always picks the sole agreement when k=1 (round(1*0.1) floors to 0 → min 1).
+      random: () => 0,
       agreementSampleRate: 0.1,
     });
-    expect(queue.map((item) => item.gmailMessageId)).toEqual(["d1", "d2"]);
+    expect(queue.map((item) => item.gmailMessageId)).toEqual(["d1", "d2", "a1"]);
   });
 
-  test("samples approximately ten percent of agreements when random is below rate", () => {
+  test("mode all includes every pending agreement and disagreement", () => {
+    const items = [
+      candidate({ gmailMessageId: "d1", agreesWithFiling: false }),
+      candidate({ gmailMessageId: "a1", agreesWithFiling: true }),
+      candidate({ gmailMessageId: "a2", agreesWithFiling: true }),
+    ];
+    const queue = selectReviewQueueItems(items, {
+      mode: "all",
+      random: () => 0.99,
+    });
+    expect(queue.map((item) => item.gmailMessageId)).toEqual(["d1", "a1", "a2"]);
+  });
+
+  test("samples about ten percent of agreements with a stable count", () => {
     const agreements = Array.from({ length: 10 }, (_, index) =>
       candidate({
         gmailMessageId: `a${index}`,
         agreesWithFiling: true,
       }),
     );
-    let calls = 0;
     const queue = selectReviewQueueItems(agreements, {
       agreementSampleRate: DEFAULT_AGREEMENT_SAMPLE_RATE,
-      random: () => (calls++ === 0 ? 0.05 : 0.5),
+      random: () => 0,
     });
     expect(queue).toHaveLength(1);
     expect(queue[0]?.gmailMessageId).toBe("a0");
+  });
+
+  test("small agreement-only audits still queue at least one message", () => {
+    const agreements = Array.from({ length: 5 }, (_, index) =>
+      candidate({
+        gmailMessageId: `a${index}`,
+        agreesWithFiling: true,
+      }),
+    );
+    // Independent Bernoulli at 10% empties ~59% of the time; fixed-size sample must not.
+    const queue = selectReviewQueueItems(agreements, {
+      agreementSampleRate: DEFAULT_AGREEMENT_SAMPLE_RATE,
+      random: () => 0.99,
+    });
+    expect(queue).toHaveLength(1);
   });
 
   test("excludes malformed verdicts from the queue", () => {
@@ -121,7 +154,7 @@ describe("review queue stratification", () => {
         candidate({ gmailMessageId: "d1", agreesWithFiling: false }),
         candidate({ gmailMessageId: "a2", agreesWithFiling: true }),
       ],
-      { random: () => 0 },
+      { random: () => 0, agreementSampleRate: 1 },
     );
     expect(queue.map((item) => item.gmailMessageId)).toEqual(["d1", "a1", "a2"]);
   });

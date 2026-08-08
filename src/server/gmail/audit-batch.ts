@@ -1,16 +1,16 @@
-import type { ClassificationOutcome } from "@/src/server/gmail/classify";
 import type { JudgeVerdictResult } from "@/src/server/gmail/judge";
 
 export const DEFAULT_AUDIT_CONCURRENCY = 5;
 export const DEFAULT_AUDIT_MAX_MESSAGES = 100;
 
-/** Eligible for judging — protected is excluded upstream in buildAuditCandidates (ADR-0010). */
-export type EligibleAuditOutcome = Exclude<ClassificationOutcome, "protected">;
+/** Eligible for judging — only keyword-classified destination labels. */
+export type EligibleAuditOutcome = "priority" | "review" | "new";
 
 export type AuditBatchMessage = Readonly<{
   gmailMessageId: string;
   outcome: EligibleAuditOutcome;
   from: string;
+  replyTo: string;
   subject: string;
   bodyText: string;
 }>;
@@ -21,7 +21,7 @@ export type AuditBatchVerdict = JudgeVerdictResult & Readonly<{
 
 /**
  * Judge eligible messages with bounded concurrency.
- * Caller must omit protected mail (buildAuditCandidates) — no verdict row (issue #17 / ADR-0010).
+ * Caller must omit archive/blocked/whitelist/protected (buildAuditCandidates).
  * On judge failure: stop claiming new work, drain active workers, then rethrow.
  */
 export async function runAuditBatch(input: Readonly<{

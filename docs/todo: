@@ -1,0 +1,7 @@
+todo:
+
+1. Confirm that all the recent changes show in DEMO
+2. commit changes
+3. Confirm that all 3 envs are ready: local, demo, prod and they have information and instructions for each in the readme.
+4. do a security review of demo so that I can safely deploy it to vercel free tier
+5. create  a project synopsis with suggested screenshots, so that if I make a personal website, I can showcase this project there

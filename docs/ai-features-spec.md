@@ -23,7 +23,7 @@ Add four capabilities on top of the existing deterministic foundation:
 
 1. **Persisted evidence** — encrypted **Message Snapshots** during sync and versioned **Category Intent** alongside term lists, governed by retention.
 2. **AI adjudication** — a separate, bounded, resumable **Audit Run** that reads snapshots, issues a **Verdict** per message, and may **Promote** misfiled mail automatically while requiring confirmation for **Demotions** into archive.
-3. **Evaluation and review** — a **Golden Set** with frozen text, disjoint **Exemplar Pool** and **Holdout** partitions, **Eval Runs** for both matching and judge quality, and a stratified human **Review Queue** that records **Owner Labels** without touching Gmail.
+3. **Evaluation and review** — a **Golden Set** with frozen text, disjoint **Exemplar Pool** and **Holdout** partitions, **Eval Runs** for both matching and judge quality, and a stratified human **Review Queue** that records **Owner Labels** and re-files the chosen category in Gmail.
 4. **Public demo and infrastructure** — a multi-tenant demo variant isolated by Postgres row-level security, a 100-message adversarial fixture corpus, mocked Gmail and model providers, reproducible deployment via Terraform (Vercel + Neon) and a second target (Render), with OpenTelemetry traces exported to Langfuse first and swappable later.
 
 Delivery is sequenced in nine slices (Slice 1 before Slice 0 per current plan). Each slice ships independently and is testable before the next begins.
@@ -70,7 +70,7 @@ Delivery is sequenced in nine slices (Slice 1 before Slice 0 per current plan). 
 27. As an owner, I want approximately ten percent of agreements sampled, so that false negatives are detectable and not only false positives.
 28. As an owner, I want review to read the stored snapshot, not live Gmail, so that review works offline and reflects the evidence the judge saw.
 29. As an owner, I want to record an owner label per reviewed message, so that my judgment becomes ground truth for eval.
-30. As an owner, I want review to never re-file mail in Gmail, so that remediation stays at the configuration and intent layer.
+30. As an owner, I want review to re-file the message in Gmail to my Owner Label, so that correcting a verdict also fixes the mailbox.
 31. As an owner, I want keyboard-driven review flow, so that labeling a sitting of ~20 items is efficient.
 32. As an owner, I want to see the deterministic outcome, verdict, snapshot excerpt, and category intents side by side while reviewing, so that I can judge whether the judge read intent correctly.
 
@@ -125,7 +125,7 @@ Delivery is sequenced in nine slices (Slice 1 before Slice 0 per current plan). 
 ### Deferred (explicitly not in initial delivery)
 
 69. As an owner, I want audit runs to auto-chain after sync completion — *deferred (D-1); manual trigger first*.
-70. As an owner, I want my review verdict to re-file mail and stick — *deferred (D-2)*.
+70. As an owner, I want a sticky owner verdict that suppresses later audit mutations on that message — *deferred (D-2); re-file on review already ships (story 30)*.
 71. As an operator, I want Phoenix and Braintrust exporters alongside Langfuse — *deferred (D-3); Langfuse first*.
 72. As an owner, I want inline judging inside sync — *deferred, leaning rejected (D-4)*.
 73. As an operator, I want an AWS ECS/Lambda deployment via CDK — *deferred (D-5)*.

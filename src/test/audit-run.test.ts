@@ -13,11 +13,26 @@ import { encryptMessageSnapshotPayload } from "../server/gmail/message-snapshot"
 
 mock.module("server-only", () => ({}));
 
-const { AuditAlreadyRunningError, AuditLeaseLostError, AuditRunService } = await import(
+const {
+  AuditAlreadyRunningError,
+  AuditLeaseLostError,
+  AuditRunService,
+  isAuditableSyncRunStatus,
+} = await import(
   "../server/gmail/audit-run"
 );
 
 const SNAP_KEY = "test-encryption-key-for-audit-run";
+
+describe("auditable sync run statuses", () => {
+  test("accepts finished sync statuses including bounded batches", () => {
+    expect(isAuditableSyncRunStatus("completed")).toBe(true);
+    expect(isAuditableSyncRunStatus("bounded_incomplete")).toBe(true);
+    expect(isAuditableSyncRunStatus("partial_failure")).toBe(true);
+    expect(isAuditableSyncRunStatus("running")).toBe(false);
+    expect(isAuditableSyncRunStatus("failed")).toBe(false);
+  });
+});
 
 describe("shadow audit guarantees", () => {
   test("audit path skips protected via candidates — MockLanguageModel is enough", async () => {
@@ -29,9 +44,9 @@ describe("shadow audit guarantees", () => {
           content: [{
             type: "text",
             text: JSON.stringify({
-              agrees_with_filing: false,
-              recommended_category: "archive",
-              rationale: "Blocked sender; leave in archive",
+              agrees_with_filing: true,
+              recommended_category: "priority",
+              rationale: "Matches priority intent",
             }),
           }],
           finishReason: { unified: "stop", raw: undefined },
@@ -49,7 +64,7 @@ describe("shadow audit guarantees", () => {
         {
           gmailMessageId: "m1",
           encryptedPayload: encryptMessageSnapshotPayload(
-            { subject: "buy", from: "spam@x", replyTo: "", bodyText: "click" },
+            { subject: "outage", from: "ops@x", replyTo: "", bodyText: "urgent click" },
             SNAP_KEY,
           ),
           keyVersion: 1,
@@ -62,10 +77,19 @@ describe("shadow audit guarantees", () => {
           ),
           keyVersion: 1,
         },
+        {
+          gmailMessageId: "arch",
+          encryptedPayload: encryptMessageSnapshotPayload(
+            { subject: "sale", from: "spam@x", replyTo: "", bodyText: "blocked noise" },
+            SNAP_KEY,
+          ),
+          keyVersion: 1,
+        },
       ],
       outcomes: [
-        { gmailMessageId: "m1", outcome: "blocked" },
+        { gmailMessageId: "m1", outcome: "priority" },
         { gmailMessageId: "prot", outcome: "protected" },
+        { gmailMessageId: "arch", outcome: "blocked" },
       ],
       encryptionKey: SNAP_KEY,
     });
@@ -79,14 +103,15 @@ describe("shadow audit guarantees", () => {
         archive: "noise",
       },
       message: {
-        from: "spam@x",
-        subject: "buy",
-        bodyText: "click",
-        deterministicOutcome: "blocked",
+        from: "ops@x",
+        subject: "outage",
+        bodyText: "urgent click",
+        deterministicOutcome: "priority",
+        classifierMatch: "urgent",
       },
       exemplars: selectExemplarsByCategory([]),
     });
-    expect(prompt.user).toContain("deterministic_outcome: blocked");
+    expect(prompt.user).toContain("deterministic_outcome: priority");
     expect(prompt.user).toContain("<<<MESSAGE");
 
     const verdicts = await runAuditBatch({
@@ -108,6 +133,7 @@ describe("shadow audit guarantees", () => {
               subject: message.subject,
               bodyText: message.bodyText,
               deterministicOutcome: message.outcome,
+              classifierMatch: "urgent",
             },
             exemplars: selectExemplarsByCategory([]),
           }).user,
@@ -117,7 +143,7 @@ describe("shadow audit guarantees", () => {
 
     expect(modelCalls).toBe(1);
     expect(verdicts).toHaveLength(1);
-    expect(verdicts[0]?.recommendedCategory).toBe("archive");
+    expect(verdicts[0]?.recommendedCategory).toBe("priority");
     expect(verdicts[0]?.malformed).toBe(false);
   });
 
@@ -343,9 +369,23 @@ function makeLeaseLostFakeDb(encryptedPayload: string) {
                   return {
                     limit: async () => {
                       if (n === 1) {
-                        return [{ categoryIntent: {
-                          priority: "p", review: "r", new: "n", archive: "a",
-                        } }];
+                        return [{
+                          categoryIntent: {
+                            priority: "p", review: "r", new: "n", archive: "a",
+                          },
+                          autoApplyPromotions: false,
+                          terms: {
+                            priority: ["body"],
+                            review: [],
+                            new: [],
+                            archive: [],
+                          },
+                          sourceLabelId: "Label_s",
+                          priorityLabelId: "Label_p",
+                          reviewLabelId: "Label_r",
+                          newLabelId: "Label_n",
+                          archiveLabelId: "Label_a",
+                        }];
                       }
                       if (n === 3) return [];
                       return [];

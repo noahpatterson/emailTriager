@@ -3,11 +3,14 @@ import Link from "next/link";
 import { BrandLogo } from "@/app/brand-logo";
 import { gmailConnection, syncRun, triageConfig } from "@/db/schema";
 import { Dashboard, type DashboardState } from "@/app/dashboard";
+import { ownerUserFromSession } from "@/app/owner-user";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { getServerConfig } from "@/src/config/server";
 import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
 import { database } from "@/src/server/db";
+import { googleProviderForOwner } from "@/src/server/gmail/factory";
+import { buildGmailLabelJumps } from "@/src/server/gmail/gmail-url";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +23,14 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
   const db = database();
   const [connection, configuration, runs, gmailMessageLinkRoot] = await Promise.all([
     db.select({ ownerAuthUserId: gmailConnection.ownerAuthUserId }).from(gmailConnection).where(and(eq(gmailConnection.ownerAuthUserId, ownerId), isNull(gmailConnection.disconnectedAt))).limit(1),
-    db.select({ version: triageConfig.version }).from(triageConfig).where(eq(triageConfig.ownerAuthUserId, ownerId)).orderBy(desc(triageConfig.version)).limit(1),
+    db.select({
+      version: triageConfig.version,
+      sourceLabelId: triageConfig.sourceLabelId,
+      priorityLabelId: triageConfig.priorityLabelId,
+      reviewLabelId: triageConfig.reviewLabelId,
+      newLabelId: triageConfig.newLabelId,
+      archiveLabelId: triageConfig.archiveLabelId,
+    }).from(triageConfig).where(eq(triageConfig.ownerAuthUserId, ownerId)).orderBy(desc(triageConfig.version)).limit(1),
     db.select({
       id: syncRun.id,
       status: syncRun.status,
@@ -29,13 +39,28 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
       finishedAt: syncRun.finishedAt,
       errorSummary: syncRun.errorSummary,
       nextPageToken: syncRun.nextPageToken,
-    }).from(syncRun).where(eq(syncRun.ownerAuthUserId, ownerId)).orderBy(desc(syncRun.startedAt)).limit(8),
+    }).from(syncRun).where(eq(syncRun.ownerAuthUserId, ownerId)).orderBy(desc(syncRun.startedAt)).limit(30),
     new OwnerPreferencesService(db).getGmailMessageLinkRoot(ownerId),
   ]);
+
+  const connected = connection.length > 0;
+  const configured = configuration.length > 0;
+  let gmailLabelJumps: DashboardState["gmailLabelJumps"] = [];
+  if (connected && configuration[0]) {
+    try {
+      const provider = await googleProviderForOwner(ownerId);
+      const catalog = await provider.listLabels();
+      gmailLabelJumps = [...buildGmailLabelJumps(configuration[0], gmailMessageLinkRoot, catalog)];
+    } catch {
+      gmailLabelJumps = [];
+    }
+  }
+
   return {
-    connected: connection.length > 0,
-    configured: configuration.length > 0,
+    connected,
+    configured,
     gmailMessageLinkRoot,
+    gmailLabelJumps,
     runs: runs.map((run) => ({
       ...run,
       trial: run.trial,
@@ -55,10 +80,7 @@ async function loadHomeView(): Promise<HomeView> {
   return {
     kind: "dashboard",
     state: await getDashboardState(userId),
-    user: {
-      name: typeof user.name === "string" ? user.name : "",
-      email: typeof user.email === "string" ? user.email : "",
-    },
+    user: ownerUserFromSession(user),
   };
 }
 
