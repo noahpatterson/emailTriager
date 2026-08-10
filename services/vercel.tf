@@ -10,8 +10,14 @@ locals {
 
   # Rebuild Neon URIs as emailtriager_app (NOBYPASSRLS). Owner URIs bypass RLS and must
   # never be the Vercel runtime DATABASE_URL in demo mode.
-  owner_pooler_tail = regex("postgresql://[^@]+@(.+)$", neon_project.public.connection_uri_pooler)[0]
-  owner_direct_tail = regex("postgresql://[^@]+@(.+)$", neon_project.public.connection_uri)[0]
+  owner_pooler_tail = regex(
+    "^[^:]+://[^@]+@(.+)$",
+    trimspace(neon_project.public.connection_uri_pooler),
+  )[0]
+  owner_direct_tail = regex(
+    "^[^:]+://[^@]+@(.+)$",
+    trimspace(neon_project.public.connection_uri),
+  )[0]
   demo_app_pooler_url = format(
     "postgresql://emailtriager_app:%s@%s",
     urlencode(var.demo_app_db_password),
@@ -68,9 +74,11 @@ check "demo_app_password_required" {
 }
 
 resource "vercel_project" "app" {
-  name      = var.vercel_project_name
-  framework = "nextjs"
-  team_id   = var.vercel_team_id == "" ? null : var.vercel_team_id
+  name                         = var.vercel_project_name
+  framework                    = "nextjs"
+  team_id                      = var.vercel_team_id == "" ? null : var.vercel_team_id
+  preview_deployments_disabled = true
+  git_fork_protection          = true
 
   git_repository = {
     type = "github"
@@ -98,7 +106,7 @@ resource "vercel_project_environment_variable" "app" {
   team_id    = var.vercel_team_id == "" ? null : var.vercel_team_id
   key        = each.key
   value      = each.value
-  target     = ["production", "preview"]
+  target     = ["production"]
   sensitive  = true
 }
 
