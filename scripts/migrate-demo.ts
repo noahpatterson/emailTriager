@@ -66,9 +66,33 @@ try {
     END
     $$
   `);
+  
+  // Verify that rolsuper and rolbypassrls are not true
+  const { rows: roleRows } = await client.query<{
+  rolsuper: boolean;
+  rolbypassrls: boolean;
+  }>(
+    `SELECT rolsuper, rolbypassrls
+     FROM pg_roles
+     WHERE rolname = $1`,
+    ["emailtriager_app"],
+  );
+  
+  const appRole = roleRows[0];
+  
+  if (!appRole) {
+    throw new Error("emailtriager_app role was not created");
+  }
+  
+  if (appRole.rolsuper || appRole.rolbypassrls) {
+    throw new Error(
+      "Refusing demo setup: emailtriager_app must be NOSUPERUSER and NOBYPASSRLS",
+    );
+  }
+  
   // PASSWORD cannot use bind params ($1); Postgres parses it as an identifier/literal only.
   await client.query(
-    `ALTER ROLE emailtriager_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD ${client.escapeLiteral(appPassword)}`,
+    `ALTER ROLE emailtriager_app WITH LOGIN PASSWORD ${client.escapeLiteral(appPassword)}`,
   );
   await client.query(`
     GRANT USAGE ON SCHEMA public TO emailtriager_app;
