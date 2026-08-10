@@ -1,5 +1,9 @@
 # Email Triage
 
+[Try the live Demo →](https://email-triager.noahpatterson.me/)
+
+![Email Triage public demo](docs/assets/demo-preview.png)
+
 Single-owner Gmail triage console. Deterministic local rules classify mail under a configured source label, apply Gmail labels, and keep a bounded sync history. See [`docs/product-spec.md`](docs/product-spec.md).
 
 ## What it is / is not
