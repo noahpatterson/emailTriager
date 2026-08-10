@@ -31,6 +31,7 @@
     "@opentelemetry/resources": "2.0.1",
     "@opentelemetry/sdk-trace-base": "2.0.1",
     "@opentelemetry/semantic-conventions": "1.36.0",
+    "@vercel/analytics": "^2.0.1",
     "ai": "7.0.52",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
