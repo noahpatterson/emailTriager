@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { InsecureLocalBanner } from "@/app/insecure-local-banner";
 import { isInsecureLocalDevRequested } from "@/src/server/auth/local-dev-flags";
 import { isDemoProfile } from "@/src/server/demo/ai-gate";
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       >
         <InsecureLocalBanner />
         {children}
+        <Analytics />
       </body>
     </html>
   );
