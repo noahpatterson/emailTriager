@@ -42,8 +42,8 @@ export function labelIdsFromGmailMessage(raw: unknown): readonly string[] {
 
 const MAX_PARTS = 100;
 const MAX_DEPTH = 12;
-const MAX_PART_BYTES = 256_000;
 const MAX_MESSAGE_BYTES = 1_000_000;
+const MAX_PART_BYTES = MAX_MESSAGE_BYTES;
 
 function decodeBase64Url(data: string): Buffer {
   if (!/^[A-Za-z0-9_-]*={0,2}$/.test(data)) throw new Error("Invalid MIME encoding");
@@ -127,22 +127,24 @@ export function parseGmailMessage(message: GmailMessage): ParsedMessage {
   const visit = (part: GmailPayload, depth: number): void => {
     parts += 1;
     if (depth > MAX_DEPTH || parts > MAX_PARTS) throw new Error("MIME structure exceeds limit");
-    if (part.body?.data && !part.filename) {
+    const mime = part.mimeType?.toLowerCase().split(";", 1)[0];
+    if (
+      part.body?.data
+      && !part.filename
+      && (mime === "text/plain" || mime === "text/html")
+    ) {
       const raw = decodeBase64Url(part.body.data);
       bytes += raw.byteLength;
       if (bytes > MAX_MESSAGE_BYTES) throw new Error("Message exceeds limit");
-      const mime = part.mimeType?.toLowerCase().split(";", 1)[0];
-      if (mime === "text/plain" || mime === "text/html") {
-        const contentType = part.headers?.find(
-          (header) => header.name?.toLowerCase() === "content-type",
-        )?.value;
-        const decoded = decodeBytes(
-          raw,
-          charsetFromMimeType(contentType ?? part.mimeType),
-        );
-        if (mime === "text/plain") plain.push(decoded);
-        else html.push(visibleHtml(decoded));
-      }
+      const contentType = part.headers?.find(
+        (header) => header.name?.toLowerCase() === "content-type",
+      )?.value;
+      const decoded = decodeBytes(
+        raw,
+        charsetFromMimeType(contentType ?? part.mimeType),
+      );
+      if (mime === "text/plain") plain.push(decoded);
+      else html.push(visibleHtml(decoded));
     }
     for (const child of part.parts ?? []) visit(child, depth + 1);
   };

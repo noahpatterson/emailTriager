@@ -81,9 +81,7 @@ export function messageStateAction(
   processingStatus: string | null | undefined,
 ): "process" | "recover" | "skip" {
   if (processingStatus === "pending") return "recover";
-  if (processingStatus === "processed" || processingStatus === "failed") {
-    return "skip";
-  }
+  if (processingStatus === "processed") return "skip";
   return "process";
 }
 

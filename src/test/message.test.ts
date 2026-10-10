@@ -13,6 +13,45 @@ describe("Gmail MIME parsing", () => {
     expect(parsed).toMatchObject({ id: "m1", threadId: "t1", from: "Sender <sender@example.com>", subject: "Hello", bodyText: "Plain body", labelIds: ["INBOX"] });
   });
 
+  test("parses a large text part within the message byte limit", () => {
+    const body = "x".repeat(300_000);
+    const parsed = parseGmailMessage({
+      id: "large-message",
+      threadId: "large-thread",
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "From", value: "sender@example.com" },
+          { name: "Subject", value: "Large message" },
+        ],
+        body: { data: encoded(body) },
+      },
+    });
+
+    expect(parsed.bodyText).toBe(body);
+  });
+
+  test("rejects text that exceeds the byte limits", () => {
+    expect(() => parseGmailMessage({
+      id: "oversized-part",
+      threadId: "large-thread",
+      payload: {
+        mimeType: "text/plain",
+        body: { data: encoded("x".repeat(1_000_001)) },
+      },
+    })).toThrow("MIME part exceeds limit");
+
+    const part = { mimeType: "text/plain", body: { data: encoded("x".repeat(600_000)) } };
+    expect(() => parseGmailMessage({
+      id: "oversized-message",
+      threadId: "large-thread",
+      payload: {
+        mimeType: "multipart/mixed",
+        parts: [part, part],
+      },
+    })).toThrow("Message exceeds limit");
+  });
+
   test("exposes STARRED from labelIds for protection checks", () => {
     const parsed = parseGmailMessage({
       id: "m1",
@@ -73,7 +112,7 @@ describe("Gmail MIME parsing", () => {
         parts: [
           {
             mimeType: "application/octet-stream",
-            body: { data: Buffer.from([0xff, 0xfe, 0x00]).toString("base64url") },
+            body: { data: "***" },
           },
           { mimeType: "text/plain", body: { data: encoded("ok") } },
         ],
