@@ -1,10 +1,39 @@
 import { describe, expect, test } from "bun:test";
 import { listBounded } from "../server/gmail/sync";
 import { GoogleGmailProvider } from "../server/gmail/google";
+import {
+  refreshGoogleAccessToken,
+} from "../server/gmail/factory";
+import { GmailReauthorizationRequiredError } from "../server/gmail/connection-health";
 import { DeterministicGmailFake } from "../server/gmail/fake";
 import { decryptSecret, encryptSecret } from "../server/security/crypto";
 
 describe("OAuth token protection", () => { test("encrypts tokens with authenticated encryption", () => { const encrypted = encryptSecret("refresh-secret", "test-key"); expect(encrypted).not.toContain("refresh-secret"); expect(decryptSecret(encrypted, "test-key")).toBe("refresh-secret"); expect(() => decryptSecret(`${encrypted}x`, "test-key")).toThrow(); }); });
+describe("OAuth token refresh", () => {
+  test("identifies an expired or revoked Google grant as requiring reconnection", async () => {
+    const refresh = refreshGoogleAccessToken(
+      "stale-refresh-token",
+      { clientId: "client", clientSecret: "secret" },
+      async () => Response.json(
+        { error: "invalid_grant", error_description: "Token has been expired or revoked." },
+        { status: 400 },
+      ),
+    );
+
+    await expect(refresh).rejects.toBeInstanceOf(GmailReauthorizationRequiredError);
+  });
+
+  test("does not request reconnection for transient token endpoint failures", async () => {
+    const refresh = refreshGoogleAccessToken(
+      "refresh-token",
+      { clientId: "client", clientSecret: "secret" },
+      async () => new Response(null, { status: 503 }),
+    );
+
+    await expect(refresh).rejects.toThrow("Token refresh failed");
+    await expect(refresh).rejects.not.toBeInstanceOf(GmailReauthorizationRequiredError);
+  });
+});
 describe("bounded Gmail listing", () => {
   test("stops at page bound and returns resumable cursor", async () => { const fake = new DeterministicGmailFake({ first: { messages: [{ id: "m1", threadId: "t" }], nextPageToken: "p2" }, p2: { messages: [{ id: "m2", threadId: "t" }] } }); expect(await listBounded(fake, "source", { maxPages: 1, maxMessagesPerPage: 10, maxTotalMessages: 10 })).toEqual({ exhausted: false, messageIds: ["m1"], nextPageToken: "p2" }); });
   test("rejects repeated cursors", async () => { const fake = new DeterministicGmailFake({ first: { messages: [], nextPageToken: "p2" }, p2: { messages: [], nextPageToken: "p2" } }); await expect(listBounded(fake, "source", { maxPages: 3, maxMessagesPerPage: 10, maxTotalMessages: 10 })).rejects.toThrow("cycle"); });

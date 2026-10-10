@@ -10,6 +10,7 @@ import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
 import { database, withDemoOwnerScope } from "@/src/server/db";
 import { sqlNotDemoMockSeedSync } from "@/src/server/demo/seed-mock-queues";
+import { inspectGmailConnection } from "@/src/server/gmail/connection-health";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { buildGmailLabelJumps } from "@/src/server/gmail/gmail-url";
 
@@ -61,13 +62,15 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
     .limit(30);
   const gmailMessageLinkRoot = await new OwnerPreferencesService(db).getGmailMessageLinkRoot(ownerId);
 
-  const connected = connection.length > 0;
+  const connectionHealth = await inspectGmailConnection(
+    connection.length > 0,
+    () => googleProviderForOwner(ownerId),
+  );
   const configured = configuration.length > 0;
   let gmailLabelJumps: DashboardState["gmailLabelJumps"] = [];
-  if (connected && configuration[0]) {
+  if (connectionHealth.provider && configuration[0]) {
     try {
-      const provider = await googleProviderForOwner(ownerId);
-      const catalog = await provider.listLabels();
+      const catalog = await connectionHealth.provider.listLabels();
       gmailLabelJumps = [...buildGmailLabelJumps(configuration[0], gmailMessageLinkRoot, catalog)];
     } catch {
       gmailLabelJumps = [];
@@ -75,7 +78,8 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
   }
 
   return {
-    connected,
+    connected: connectionHealth.connected,
+    reconnectRequired: connectionHealth.reconnectRequired,
     configured,
     gmailMessageLinkRoot,
     gmailLabelJumps,

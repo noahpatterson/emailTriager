@@ -27,6 +27,7 @@ export type DashboardRun = Readonly<{
 }>;
 export type DashboardState = Readonly<{
   connected: boolean;
+  reconnectRequired: boolean;
   configured: boolean;
   gmailMessageLinkRoot: string;
   gmailLabelJumps: readonly GmailLabelJump[];
@@ -161,7 +162,7 @@ export function Dashboard({
     try {
       const response = await post("/api/disconnect");
       if (!response.ok) throw new Error();
-      setState((current) => ({ ...current, connected: false }));
+      setState((current) => ({ ...current, connected: false, reconnectRequired: false }));
       setNotice("Gmail disconnected. Local token material was removed.");
     } catch { setError("Gmail could not be disconnected. Please try again."); }
     finally { setAction("idle"); }
@@ -207,7 +208,9 @@ export function Dashboard({
           <i />
           {demoProfile
             ? (state.connected ? "Fixture mailbox ready" : "Fixture mailbox missing")
-            : (state.connected ? "Gmail connected" : "Gmail disconnected")}
+            : (state.connected
+              ? "Gmail connected"
+              : state.reconnectRequired ? "Gmail reconnect required" : "Gmail disconnected")}
         </span>
         <UserMenu
           user={user}
@@ -229,21 +232,27 @@ export function Dashboard({
         <h2>
           {demoProfile
             ? (state.connected ? "Fixture mailbox is ready" : "Demo mailbox missing")
-            : (state.connected ? "Your Gmail account is ready" : "Connect your Gmail account")}
+            : (state.connected
+              ? "Your Gmail account is ready"
+              : state.reconnectRequired ? "Reconnect your Gmail account" : "Connect your Gmail account")}
         </h2>
         <p>
           {demoProfile
             ? "This session uses DeterministicGmailFake seeded from the adversarial corpus. No Google OAuth. Click sync when you want to classify."
             : (state.connected
               ? "Only the configured source label is read. Email bodies, attachments, and OAuth tokens are never shown here."
-              : "Authorize read and label access for the single owner account. Email is never sent, permanently deleted, or marked read.")}
+              : state.reconnectRequired
+                ? "Google no longer accepts the saved authorization. Reconnect Gmail to restore access. Your configuration and run history will be kept."
+                : "Authorize read and label access for the single owner account. Email is never sent, permanently deleted, or marked read.")}
         </p>
         {demoProfile ? (
           <p className="field-help">Open Review for five seeded disagreements, or Demotions for one pending archive confirm. Live model audits stay off.</p>
         ) : state.connected ? (
           <button className="button secondary" type="button" disabled={busy} onClick={disconnect}>{action === "disconnecting" ? "Disconnecting…" : "Disconnect Gmail"}</button>
         ) : (
-          <button className="button" type="button" disabled={busy} onClick={connect}>{action === "connecting" ? "Opening Google…" : "Connect Gmail"}</button>
+          <button className="button" type="button" disabled={busy} onClick={connect}>
+            {action === "connecting" ? "Opening Google…" : state.reconnectRequired ? "Reconnect Gmail" : "Connect Gmail"}
+          </button>
         )}
       </article>
 
