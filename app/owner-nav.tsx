@@ -1,9 +1,10 @@
 import Link from "next/link";
 
-export type OwnerNavActive = "home" | "review" | "demotion" | "configuration" | "settings" | "run";
+export type OwnerNavActive = "home" | "contests" | "review" | "demotion" | "configuration" | "settings" | "run";
 
 const LINKS = [
   { id: "home", href: "/", label: "Sync" },
+  { id: "contests", href: "/contests", label: "Contests" },
   { id: "review", href: "/review", label: "Review" },
   { id: "demotion", href: "/demotion", label: "Demotions" },
 ] as const satisfies ReadonlyArray<{

@@ -6,6 +6,8 @@
 
 Single-owner Gmail triage console. Deterministic local rules classify mail under a configured source label, apply Gmail labels, and keep a bounded sync history. See [`docs/product-spec.md`](docs/product-spec.md).
 
+Optional [contest scans](docs/operations/contest-scans.md) send every eligible unprocessed message to native TypeSafe Jev classification without a keyword gate. The Contest mail page shows win and claim-action probabilities, applies five contest labels, and supports corrections. Winner alerts use ntfy and stay off until explicitly enabled after accuracy validation. Use [private Tailscale access](docs/operations/tailscale.md) to open the normal owner app from an iPhone.
+
 ## What it is / is not
 
 **Is**

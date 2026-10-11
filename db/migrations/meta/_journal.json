@@ -120,6 +120,20 @@
       "when": 1784426000000,
       "tag": "0017_pending_demotion_open_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791630000000,
+      "tag": "0018_contest_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791640000000,
+      "tag": "0019_contest_scan_progress",
+      "breakpoints": true
     }
   ]
 }

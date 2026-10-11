@@ -1,0 +1,70 @@
+import type { ContestCategory } from "./contest-classify";
+export const CONTEST_DESTINATIONS = ["winner", "new_contest", "irrelevant"] as const;
+export type ContestLabels = Readonly<Record<ContestCategory, string>>;
+export type ContestSettings = Readonly<{ labels: ContestLabels }>;
+export type ContestNotificationStatus = "reserved" | "sent" | "failed" | "uncertain";
+export type ContestResultRow = Readonly<{
+  gmailMessageId: string;
+  gmailThreadId: string | null;
+  sender: string;
+  subject: string;
+  category: ContestCategory;
+  manualCategory: ContestCategory | null;
+  explicitWinProbability: number;
+  claimActionProbability: number;
+  confidence: number;
+  claimDeadline: string | null;
+  model: string;
+  promptVersion: string;
+  inputTokens: number;
+  outputTokens: number;
+  labelStatus: "pending" | "applied" | "protected";
+  notificationStatus: ContestNotificationStatus | null;
+  gmailUrl: string;
+}>;
+export type ContestScanProgress = Readonly<{
+  resultMessageIds?: readonly string[];
+  batchTotal: number | null;
+  completedBefore: number;
+  completedBatchesBefore: number;
+  totalEstimate: number | null;
+  sourceLabelId: string;
+  configurationKey: string;
+  inputPageToken: string | null;
+  heartbeatAt: string;
+  trackingStartedMidScan?: boolean;
+}>;
+export type ContestRunSummary = Readonly<{
+  id: string;
+  status: "running" | "completed" | "bounded_incomplete" | "partial_failure" | "failed";
+  trial: boolean;
+  scanned: number;
+  candidates: number;
+  classified: number;
+  skipped: number;
+  failed: number;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd?: number | null;
+  progress?: ContestScanProgress | null;
+  nextPageToken: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  errorCode: string | null;
+}>;
+export type ContestOverview = Readonly<{
+  settings: ContestSettings | null;
+  results: readonly ContestResultRow[];
+  latestRun: ContestRunSummary | null;
+  modelConfigured: boolean;
+  notificationsConfigured: boolean;
+  disabled: boolean;
+}>;
+export type ContestPostAction = Readonly<{ action: "configure"; labels: ContestLabels }> |
+  Readonly<{ action: "scan"; trial: boolean; pageToken?: string }>;
+export type ContestScanResponse = Readonly<{ run: ContestRunSummary; results: readonly ContestResultRow[] }>;
+export type ContestCorrectionResponse = Readonly<{ result: ContestResultRow }>;
+export type ContestNotificationHooks = Readonly<{
+  configured: () => boolean;
+  notify: (ownerId: string, googleSubject: string, result: ContestResultRow) => Promise<void>;
+}>;

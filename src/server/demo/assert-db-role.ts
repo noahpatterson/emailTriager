@@ -13,6 +13,9 @@ const DEMO_RLS_TABLES = [
   "oauth_state",
   "audit_run",
   "pending_demotion",
+  "contest_settings",
+  "contest_message",
+  "contest_scan_run",
 ] as const;
 
 /**
