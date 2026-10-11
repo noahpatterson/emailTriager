@@ -22,8 +22,10 @@ export class GoogleGmailProvider implements GmailProvider {
     }
     const params = new URLSearchParams({ labelIds: input.sourceLabelId, maxResults: String(maxResults) });
     if (input.pageToken) params.set("pageToken", input.pageToken);
-    const body = await (await this.request(`messages?${params}`)).json() as { messages?: { id: string; threadId: string }[]; nextPageToken?: string };
-    return { messages: body.messages ?? [], ...(body.nextPageToken ? { nextPageToken: body.nextPageToken } : {}) };
+    const body = await (await this.request(`messages?${params}`)).json() as { messages?: { id: string; threadId: string }[]; nextPageToken?: string; resultSizeEstimate?: unknown };
+    const estimate = body.resultSizeEstimate;
+    const resultSizeEstimate = typeof estimate === "number" && Number.isInteger(estimate) && estimate >= 0 && estimate <= 4_294_967_295 ? estimate : undefined;
+    return { messages: body.messages ?? [], ...(body.nextPageToken ? { nextPageToken: body.nextPageToken } : {}), ...(resultSizeEstimate === undefined ? {} : { resultSizeEstimate }) };
   }
   async getMessage(id: string): Promise<unknown> {
     return (await this.request(`messages/${encodeURIComponent(id)}?format=full`)).json();
@@ -39,6 +41,23 @@ export class GoogleGmailProvider implements GmailProvider {
       method: "POST",
       body: JSON.stringify({ addLabelIds: change.addLabelIds, removeLabelIds: change.removeLabelIds }),
     });
+  }
+  async createLabel(name: string): Promise<GmailLabel> {
+    if (!name.trim()) throw new Error("Gmail label name must not be empty");
+    let body: unknown;
+    try {
+      body = await (await this.request("labels", {
+        method: "POST",
+        body: JSON.stringify({ name, labelListVisibility: "labelShow", messageListVisibility: "show" }),
+      })).json();
+    } catch {
+      throw new Error("Gmail label creation failed");
+    }
+    if (!body || typeof body !== "object" || !("id" in body) || !("name" in body)
+      || typeof body.id !== "string" || !body.id.trim() || typeof body.name !== "string" || body.name !== name) {
+      throw new Error("Gmail label creation returned an invalid label");
+    }
+    return { id: body.id, name: body.name };
   }
   async trashMessage(messageId: string): Promise<void> {
     await this.request(`messages/${encodeURIComponent(messageId)}/trash`, { method: "POST" });
