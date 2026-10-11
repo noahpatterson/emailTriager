@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ContestResults, ContestProgress, preferContestRun, contestScanBlocker, contestRequestError, contestResumeCursor, formatContestCost, formatContestProbability } from "../../app/contests/contest-client";
+import { ContestResults, ContestProgress, ContestRunActivity, preferContestRun, contestScanBlocker, contestRequestError, contestResumeCursor, formatContestCost, formatContestProbability } from "../../app/contests/contest-client";
 import type { ContestResultRow, ContestRunSummary } from "../../src/server/gmail/contest-contracts";
 
 const base: ContestResultRow = {
@@ -35,6 +35,14 @@ describe("contest result presentation", () => {
     expect(html).toContain(base.gmailUrl);
   });
 
+  it("shows saved Jev details without mutation controls when reviewing a historical run", () => {
+    const html = renderToStaticMarkup(createElement(ContestResults, { results: [base], trial: false, busy: false }));
+    expect(html).toContain("Model: test");
+    expect(html).toContain("Prompt: v1");
+    expect(html).toContain("input tokens");
+    expect(html).not.toContain("Apply correction");
+  });
+
   it("shows model and manual categories while protecting Gmail labels", () => {
     const html = render([{ ...base, manualCategory: "entry_confirmation", labelStatus: "protected", subject: "<unsafe>" }]);
     expect(html).toContain("Model category: <strong>Winner</strong>");
@@ -66,6 +74,14 @@ describe("contest batch recovery", () => {
     nextPageToken: "opaque-page-token", startedAt: "2026-10-10T12:00:00Z",
     finishedAt: null, errorCode: null,
   };
+
+  it("links activity to Jev run details and explains bounded completion on the detail view", () => {
+    const activity = renderToStaticMarkup(createElement(ContestRunActivity, { run }));
+    expect(activity).toContain('href="/runs/batch"');
+    const detail = renderToStaticMarkup(createElement(ContestRunActivity, { run: { ...run, status: "bounded_incomplete" }, showDetails: true }));
+    expect(detail).toContain("Continue from the dashboard");
+    expect(detail).toContain("Failed-request charges are unknown");
+  });
 
   it("restores an interrupted batch without converting a trial to a live scan", () => {
     for (const status of ["running", "bounded_incomplete", "partial_failure", "failed"] as const) {

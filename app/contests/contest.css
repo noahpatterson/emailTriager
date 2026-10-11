@@ -1,4 +1,3 @@
-.contest-page h1 { font-size: clamp(2.4rem, 1.7rem + 3vw, 4rem); }
 .contest-content, .contest-controls, .contest-label-form, .contest-result {
   display: flex;
   flex-direction: column;
@@ -42,20 +41,29 @@
 .contest-scores > div { display: flex; flex-direction: column; gap: 0.3rem; }
 .contest-scores dt, .contest-muted, .contest-sender { color: var(--muted); font-size: 0.9rem; }
 .contest-scores dd { margin-inline: 0; font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
-.contest-run { padding: 1rem; background: color-mix(in oklch, var(--green) 6%, var(--card)); border-radius: 0.75rem; }
+.contest-run-activity { display: grid; gap: 0.65rem; padding-block: 1rem; border-block-end: 1px solid var(--line); }
+.contest-run-activity:last-child { border-block-end: 0; }
+.contest-run-activity-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.contest-run-activity time { color: var(--muted); font-size: 0.8rem; }
+.contest-status { border-radius: 999px; padding-block: 0.2rem; padding-inline: 0.55rem; background: var(--paper); font-size: 0.75rem; font-weight: 700; text-transform: capitalize; }
+.contest-run-activity p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.contest-run-link { color: var(--green); font-weight: 800; text-underline-offset: 0.2em; }
+.contest-run-link:active { color: var(--ink); }
+.contest-status.completed { background: color-mix(in oklch, var(--green) 12%, var(--card)); }
+.contest-status.failed, .contest-status.partial_failure { color: var(--red); }
 .contest-content :is(button, a, input, select):focus-visible { outline: 3px solid oklch(0.7 0.15 85); outline-offset: 3px; }
 .contest-content :is(button, a):active { background-color: color-mix(in oklch, var(--green) 15%, var(--card)); }
 @media (hover: hover) and (pointer: fine) {
   .contest-content .button.secondary-ink:not(:disabled):hover { background-color: color-mix(in oklch, var(--green) 10%, var(--card)); }
 }
 
-.contest-page .button.secondary-ink { margin-block-end: 0; }
-.contest-page .button:disabled {
+.contest-content .button.secondary-ink { margin-block-end: 0; }
+.contest-content .button:disabled {
   opacity: 1;
   color: var(--muted);
   background: var(--paper);
   border: 1px solid var(--line);
 }
 @media (hover: hover) and (pointer: fine) {
-  .contest-page .button:disabled:hover { filter: none; transform: none; }
+  .contest-content .button:disabled:hover { filter: none; transform: none; }
 }

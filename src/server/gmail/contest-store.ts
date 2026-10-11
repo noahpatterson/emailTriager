@@ -35,7 +35,7 @@ export interface ContestStore {
 export class ContestLeaseLostError extends Error { constructor() { super("Contest lease lost"); } }
 
 type MessageRecord = typeof contestMessage.$inferSelect;
-function mapMessage(record: MessageRecord, linkRoot: string): StoredContestMessage {
+export function mapContestMessage(record: MessageRecord, linkRoot: string): StoredContestMessage {
   const row: ContestResultRow = {
     gmailMessageId: record.gmailMessageId, gmailThreadId: record.gmailThreadId,
     sender: record.sender, subject: record.subject, category: record.category as ContestCategory,
@@ -48,6 +48,17 @@ function mapMessage(record: MessageRecord, linkRoot: string): StoredContestMessa
     gmailUrl: gmailMessageUrl(record, linkRoot),
   };
   return { row, labels: record.labelSnapshot as ContestLabels };
+}
+export function mapContestRun(row: typeof contestScanRun.$inferSelect): ContestRunSummary {
+  const progress = row.progress as ContestScanProgress | null;
+  return {
+    id: row.id, status: row.status, trial: row.trial,
+    scanned: row.scanned, candidates: row.candidates, classified: row.classified,
+    skipped: row.skipped, failed: row.failed, inputTokens: row.inputTokens, outputTokens: row.outputTokens,
+    estimatedCostUsd: row.estimatedCostUsd, progress, nextPageToken: row.nextPageToken,
+    errorCode: row.errorCode,
+    startedAt: row.startedAt.toISOString(), finishedAt: row.finishedAt?.toISOString() ?? null,
+  };
 }
 function connected(ownerId: string, subject: string) {
   return sql`EXISTS (SELECT 1 FROM gmail_connection WHERE owner_auth_user_id = ${ownerId} AND google_subject = ${subject} AND disconnected_at IS NULL)`;
@@ -93,16 +104,16 @@ export class DatabaseContestStore implements ContestStore {
   }
   async recoverable(context: ContestContext, includeNotifications = false) {
     const rows = await this.db.select().from(contestMessage).where(and(eq(contestMessage.ownerAuthUserId, context.ownerId), eq(contestMessage.googleSubject, context.googleSubject), or(eq(contestMessage.labelStatus, "pending"), includeNotifications ? and(eq(contestMessage.labelStatus, "applied"), or(isNull(contestMessage.notificationStatus), eq(contestMessage.notificationStatus, "failed")), sql`COALESCE(${contestMessage.manualCategory},${contestMessage.category}) = 'winner'`, sql`${contestMessage.explicitWinProbability} >= 0.9`) : sql`false`))).orderBy(sql`CASE WHEN ${contestMessage.labelStatus} = 'pending' THEN 0 ELSE 1 END`, contestMessage.updatedAt).limit(5);
-    return rows.map((row) => mapMessage(row, context.linkRoot));
+    return rows.map((row) => mapContestMessage(row, context.linkRoot));
   }
   async results(context: ContestContext, messageIds: readonly string[]) {
     if (!messageIds.length) return [];
     const rows = await this.db.select().from(contestMessage).where(and(eq(contestMessage.ownerAuthUserId, context.ownerId), eq(contestMessage.googleSubject, context.googleSubject), inArray(contestMessage.gmailMessageId, [...messageIds]))).orderBy(desc(contestMessage.explicitWinProbability), desc(contestMessage.updatedAt)).limit(100);
-    return rows.map((row) => mapMessage(row, context.linkRoot));
+    return rows.map((row) => mapContestMessage(row, context.linkRoot));
   }
   async message(context: ContestContext, id: string) {
     const [row] = await this.db.select().from(contestMessage).where(and(eq(contestMessage.ownerAuthUserId, context.ownerId), eq(contestMessage.googleSubject, context.googleSubject), eq(contestMessage.gmailMessageId, id))).limit(1);
-    return row ? mapMessage(row, context.linkRoot) : null;
+    return row ? mapContestMessage(row, context.linkRoot) : null;
   }
   async save(context: ContestContext, lease: ContestLease, row: ContestResultRow, labels: ContestLabels) {
     await this.db.execute(sql`INSERT INTO contest_message (owner_auth_user_id,google_subject,gmail_message_id,gmail_thread_id,sender,subject,category,explicit_win_probability,claim_action_probability,confidence,claim_deadline,model,prompt_version,input_tokens,output_tokens,label_snapshot) SELECT ${context.ownerId},${context.googleSubject},${row.gmailMessageId},${row.gmailThreadId},${row.sender},${row.subject},${row.category},${row.explicitWinProbability},${row.claimActionProbability},${row.confidence},${row.claimDeadline},${row.model},${row.promptVersion},${row.inputTokens},${row.outputTokens},${JSON.stringify(labels)}::jsonb WHERE ${fence(lease)} ON CONFLICT (google_subject,gmail_message_id) DO NOTHING`);
@@ -120,13 +131,7 @@ export class DatabaseContestStore implements ContestStore {
   }
   async latestRun(context: ContestContext): Promise<ContestRunSummary | null> {
     const [row] = await this.db.select().from(contestScanRun).where(and(eq(contestScanRun.ownerAuthUserId, context.ownerId), eq(contestScanRun.googleSubject, context.googleSubject))).orderBy(desc(contestScanRun.startedAt)).limit(1);
-    return row ? {
-      id: row.id, status: row.status, trial: row.trial,
-      scanned: row.scanned, candidates: row.candidates, classified: row.classified,
-      skipped: row.skipped, failed: row.failed, inputTokens: row.inputTokens, outputTokens: row.outputTokens,
-      estimatedCostUsd: row.estimatedCostUsd, progress: row.progress as ContestScanProgress | null, nextPageToken: row.nextPageToken, errorCode: row.errorCode,
-      startedAt: row.startedAt.toISOString(), finishedAt: row.finishedAt?.toISOString() ?? null,
-    } : null;
+    return row ? mapContestRun(row) : null;
   }
   async saveRun(context: ContestContext, run: ContestRunSummary) {
     const values = { ...run, estimatedCostUsd: run.estimatedCostUsd ?? null, progress: run.progress ?? null, ownerAuthUserId: context.ownerId, googleSubject: context.googleSubject, startedAt: new Date(run.startedAt), finishedAt: run.finishedAt ? new Date(run.finishedAt) : null };

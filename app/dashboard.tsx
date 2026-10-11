@@ -1,51 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { BrandLogo } from "@/app/brand-logo";
 import { GmailLabelJumpLinks } from "@/app/gmail-label-jumps";
 import { OwnerNav } from "@/app/owner-nav";
 import type { OwnerUser } from "@/app/owner-user";
 import { UserMenu } from "@/app/user-menu";
-import { DeleteRunButton } from "@/app/delete-run-button";
-import { RunResultsList, type RunResultRow } from "@/app/run-results";
-import { formatRunTime, runMessage, type RunStatus } from "@/app/run-status";
 import { DEMO_RESET_COPY } from "@/src/server/demo/session-token";
 import type { GmailLabelJump } from "@/src/server/gmail/gmail-url";
+import { ContestClient, ContestRunActivity, preferContestRun } from "@/app/contests/contest-client";
+import type { ContestRunSummary } from "@/src/server/gmail/contest-contracts";
 
 export type { RunStatus } from "@/app/run-status";
 export { formatRunTime, runMessage } from "@/app/run-status";
 
-export type DashboardRun = Readonly<{
-  id: string;
-  status: RunStatus;
-  trial: boolean;
-  startedAt: string;
-  finishedAt: string | null;
-  errorSummary: string | null;
-  nextPageToken: string | null;
-}>;
 export type DashboardState = Readonly<{
   connected: boolean;
   reconnectRequired: boolean;
   configured: boolean;
   gmailMessageLinkRoot: string;
   gmailLabelJumps: readonly GmailLabelJump[];
-  runs: readonly DashboardRun[];
+  runs: readonly ContestRunSummary[];
 }>;
 export type DashboardUser = OwnerUser;
 
-export type TrialResultRow = RunResultRow;
-
-type ActionState = "idle" | "connecting" | "syncing" | "disconnecting";
-
-const statusText: Record<RunStatus, string> = {
-  running: "Syncing",
-  bounded_incomplete: "Complete for this bounded run",
-  completed: "Completed",
-  partial_failure: "Completed with some failures",
-  failed: "Failed",
-};
+type ActionState = "idle" | "connecting" | "disconnecting";
 
 async function post(path: string, body?: unknown): Promise<Response> {
   return fetch(path, {
@@ -67,18 +47,24 @@ export function Dashboard({
   demoProfile?: boolean;
 }) {
   const [state, setState] = useState(initialState);
-  const [trialMode, setTrialMode] = useState(false);
-  const [trialResults, setTrialResults] = useState<readonly TrialResultRow[]>([]);
-  const [trialNextPageToken, setTrialNextPageToken] = useState<string | null>(null);
-  const [trialExhausted, setTrialExhausted] = useState(false);
   const [action, setAction] = useState<ActionState>("idle");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [contestBusy, setContestBusy] = useState(false);
+  const updateContestRun = useCallback((run: ContestRunSummary | null) => {
+    if (!run) return;
+    setState(current => ({
+      ...current,
+      runs: [preferContestRun(current.runs.find(saved => saved.id === run.id) ?? null, run) ?? run,
+        ...current.runs.filter(saved => saved.id !== run.id)]
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 30),
+    }));
+  }, []);
 
   async function connect(): Promise<void> {
     if (demoProfile) {
-      setNotice("Demo mailbox is already connected to the fixture corpus. Run sync when ready.");
+      setNotice("The demo mailbox is already connected to the fixture corpus.");
       return;
     }
     setAction("connecting"); setError(null); setNotice(null);
@@ -92,64 +78,6 @@ export function Dashboard({
       if (!body.authorizationUrl) throw new Error();
       window.location.assign(body.authorizationUrl);
     } catch { setError("Google connection could not be started. Please try again."); setAction("idle"); }
-  }
-
-  async function runSync(options: { trial: boolean; pageToken?: string | null }): Promise<void> {
-    setAction("syncing");
-    setError(null);
-    setNotice(options.trial
-      ? "Trial started. Classifying up to 10 messages without applying labels."
-      : "Sync started. Keep this page open while the bounded run completes.");
-    try {
-      const response = await post("/api/sync", {
-        trial: options.trial,
-        ...(options.pageToken ? { pageToken: options.pageToken } : {}),
-      });
-      if (!response.ok) throw new Error();
-      const result = await response.json() as {
-        runId: string;
-        status: RunStatus;
-        trial: boolean;
-        exhausted: boolean;
-        nextPageToken: string | null;
-        results: TrialResultRow[];
-      };
-      const now = new Date().toISOString();
-      setState((current) => ({
-        ...current,
-        runs: [{
-          id: result.runId,
-          status: result.status,
-          trial: result.trial,
-          startedAt: now,
-          finishedAt: now,
-          errorSummary: null,
-          nextPageToken: result.nextPageToken,
-        }, ...current.runs],
-      }));
-      if (result.trial) {
-        setTrialResults(result.results);
-        setTrialNextPageToken(result.nextPageToken);
-        setTrialExhausted(result.exhausted);
-        setNotice(result.exhausted
-          ? "Trial finished. Source label exhausted. No Gmail labels were changed."
-          : `Trial batch ready (${result.results.length}). Review proposed labels, then Trial more for the next 10.`);
-      } else {
-        setTrialResults([]);
-        setTrialNextPageToken(null);
-        setTrialExhausted(false);
-        setNotice(result.status === "bounded_incomplete"
-          ? "Safety limit reached. Run again when ready to continue."
-          : "Sync completed successfully.");
-      }
-    } catch {
-      setError(options.trial
-        ? "Trial could not be completed. No Gmail labels were changed."
-        : "Sync could not be completed. Gmail and message content remain protected; try again or reconnect.");
-      setNotice(null);
-    } finally {
-      setAction("idle");
-    }
   }
 
   async function disconnect(): Promise<void> {
@@ -183,10 +111,7 @@ export function Dashboard({
     }
   }
 
-  const busy = action !== "idle";
-  const canTrialMore = trialMode && Boolean(trialNextPageToken) && !trialExhausted;
-  const liveNextPageToken =
-    state.runs.find((run) => !run.trial)?.nextPageToken ?? null;
+  const busy = action !== "idle" || contestBusy;
 
   return <main className="shell" aria-busy={busy}>
     <header className="hero">
@@ -197,8 +122,8 @@ export function Dashboard({
           <h1>Email Triage</h1>
           <p className="lede">
             {demoProfile
-              ? "Sort a bounded fixture mailbox with deterministic, local rules. Review and demotion use seeded mock verdicts."
-              : "Sort a bounded set of Gmail messages with deterministic, local rules."}
+              ? "Explore fixture mail. Review and demotion use seeded mock verdicts."
+              : "Classify bounded batches of Gmail messages with TypeSafe Jev."}
           </p>
           <OwnerNav active="home" />
         </div>
@@ -226,7 +151,7 @@ export function Dashboard({
       {notice && <div className="alert success" role="status"><strong>Update</strong><span>{notice}</span></div>}
     </div>
 
-    <section className="grid" aria-label="Email triage controls">
+    <section className="grid dashboard-controls" aria-label="Email triage controls">
       <article className="card primary-card">
         <p className="step">01 · CONNECTION</p>
         <h2>
@@ -238,12 +163,12 @@ export function Dashboard({
         </h2>
         <p>
           {demoProfile
-            ? "This session uses DeterministicGmailFake seeded from the adversarial corpus. No Google OAuth. Click sync when you want to classify."
+            ? "This session uses a fixture mailbox. Jev scans are available in the owner console."
             : (state.connected
               ? "Only the configured source label is read. Email bodies, attachments, and OAuth tokens are never shown here."
               : state.reconnectRequired
                 ? "Google no longer accepts the saved authorization. Reconnect Gmail to restore access. Your configuration and run history will be kept."
-                : "Authorize read and label access for the single owner account. Email is never sent, permanently deleted, or marked read.")}
+                : "Authorize read and label access for the owner account. Jev scans classify your source label and file messages in Gmail.")}
         </p>
         {demoProfile ? (
           <p className="field-help">Open Review for five seeded disagreements, or Demotions for one pending archive confirm. Live model audits stay off.</p>
@@ -256,91 +181,15 @@ export function Dashboard({
         )}
       </article>
 
-      <article className={`card ${!state.configured ? "" : trialMode ? "trial-card" : ""}`}>
-        {!state.configured ? (
-          <>
-            <p className="step">02 · CONFIGURATION</p>
-            <h2>Set labels and classification rules</h2>
-            <p>
-              Create your Gmail labels, then configure source and destination labels, terms, whitelist, and bounds.
-              Open Settings for how triage behaves in Gmail.
-            </p>
-            <div className="sync-actions">
-              <Link className="button" href="/configuration">Open configuration</Link>
-              <Link className="button secondary-ink" href="/settings">How it works</Link>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="step">02 · BOUNDED SYNC</p>
-            <h2>{trialMode ? "Trial classification" : "Classify the next batch"}</h2>
-            <p>{trialMode
-              ? "Trial mode classifies up to 10 messages and shows the labels that would be applied. Gmail is never mutated."
-              : "Priority, review, and new terms are matched locally. A bounded run can stop before the source label is exhausted."}</p>
-
-            <label className="trial-toggle" htmlFor="trialMode">
-              <input
-                id="trialMode"
-                type="checkbox"
-                checked={trialMode}
-                disabled={busy || !state.connected}
-                onChange={(event) => {
-                  setTrialMode(event.target.checked);
-                  if (!event.target.checked) {
-                    setTrialResults([]);
-                    setTrialNextPageToken(null);
-                    setTrialExhausted(false);
-                  }
-                }}
-              />
-              <span>
-                <strong>Trial mode</strong>
-                <small>Dry-run 10 messages at a time — no label changes</small>
-              </span>
-            </label>
-
-            <div className="sync-actions">
-              {trialMode ? (
-                <>
-                  <button
-                    className="button"
-                    type="button"
-                    disabled={busy || !state.connected || !state.configured}
-                    onClick={() => void runSync({ trial: true })}
-                  >
-                    {action === "syncing" ? <><span className="spinner" aria-hidden="true" />Trial running…</> : "Run trial"}
-                  </button>
-                  {canTrialMore && (
-                    <button
-                      className="button secondary-ink"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void runSync({ trial: true, pageToken: trialNextPageToken })}
-                    >
-                      Trial more
-                    </button>
-                  )}
-                </>
-              ) : (
-                <button
-                  className="button"
-                  type="button"
-                  disabled={busy || !state.connected || !state.configured}
-                  onClick={() => void runSync({
-                    trial: false,
-                    pageToken: liveNextPageToken,
-                  })}
-                >
-                  {action === "syncing"
-                    ? <><span className="spinner" aria-hidden="true" />Syncing safely…</>
-                    : liveNextPageToken ? "Continue sync" : "Run sync"}
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </article>
     </section>
+
+    {demoProfile ? (
+      <section className="card" aria-label="Jev scan">
+        <p className="step">02 · BOUNDED SYNC</p>
+        <h2>Jev scans are owner-only</h2>
+        <p>The public demo uses a fixture mailbox. Jev scans are available in the owner console.</p>
+      </section>
+    ) : <ContestClient connected={state.connected && action !== "disconnecting"} configured={state.configured} onRunChange={updateContestRun} onScanningChange={setContestBusy} />}
 
     {state.gmailLabelJumps.length > 0 ? (
       <section className="card gmail-label-jumps-card" aria-label="Gmail label shortcuts">
@@ -355,24 +204,6 @@ export function Dashboard({
       </section>
     ) : null}
 
-    {trialMode && (
-      <section className="history trial-results" aria-label="Trial results">
-        <div className="section-heading">
-          <div>
-            <p className="step">TRIAL RESULTS</p>
-            <h2>Proposed label changes</h2>
-          </div>
-          <p>No Gmail labels are applied in trial mode. Blocked and unmatched propose archive. Subjects and senders only — no message bodies.</p>
-        </div>
-        <RunResultsList
-          results={trialResults}
-          emptyTitle="No trial batch yet"
-          emptyDescription="Run a trial to preview how the next 10 messages would be labeled."
-          gmailMessageLinkRoot={state.gmailMessageLinkRoot}
-        />
-      </section>
-    )}
-
     <section className="history">
       <div className="section-heading">
         <div>
@@ -384,43 +215,14 @@ export function Dashboard({
       {state.runs.length === 0 ? (
         <div className="empty">
           <span aria-hidden="true">◎</span>
-          <h3>No sync runs yet</h3>
-          <p>Connect Gmail and run your first bounded sync. Results will appear here.</p>
+          <h3>No Jev runs yet</h3>
+          <p>Connect Gmail and run your first Jev batch. Results will appear here.</p>
         </div>
-      ) : (
-        <div className="run-list">
-          {state.runs.map((run) => (
-            <div className="run" key={run.id}>
-              <Link className="run-main" href={`/runs/${run.id}`}>
-                <span className={`status-dot ${run.status}`} aria-hidden="true" />
-                <div className="run-copy">
-                  <div>
-                    <strong>{statusText[run.status]}</strong>
-                    {run.trial && <span className="trial-badge">Trial</span>}
-                    <time dateTime={run.startedAt}>{formatRunTime(run.startedAt)}</time>
-                  </div>
-                  <p>{run.errorSummary ?? runMessage(run.status, run.trial)}</p>
-                </div>
-                <code>{run.id.slice(0, 8)}</code>
-              </Link>
-              <DeleteRunButton
-                runId={run.id}
-                trial={run.trial}
-                onDeleted={(id) => {
-                  setState((current) => ({
-                    ...current,
-                    runs: current.runs.filter((entry) => entry.id !== id),
-                  }));
-                  setNotice("Run deleted from the database. Gmail was not changed.");
-                  setError(null);
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+      ) : <div className="run-list">
+        {state.runs.map(run => <ContestRunActivity key={run.id} run={run} />)}
+      </div>}
     </section>
 
-    <footer><strong>Safety by design</strong><span>No Gmail search · No message bodies · Label moves + optional Trash for archive</span></footer>
+    <footer><strong>Safety by design</strong><span>Bounded Jev batches · No message bodies shown · Starred mail stays protected</span></footer>
   </main>;
 }

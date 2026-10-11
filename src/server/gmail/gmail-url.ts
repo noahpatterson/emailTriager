@@ -1,5 +1,6 @@
 import { DEFAULT_GMAIL_MESSAGE_LINK_ROOT } from "@/src/server/config/owner-preferences-validate";
 import { displayLabelRefs, type GmailLabel, type LabelRefs } from "@/src/server/gmail/labels";
+import type { ContestLabels } from "./contest-contracts";
 
 export { DEFAULT_GMAIL_MESSAGE_LINK_ROOT };
 
@@ -46,7 +47,7 @@ export function gmailLabelUrl(
 }
 
 export type GmailLabelJump = Readonly<{
-  key: "source" | "priority" | "review" | "new" | "archive";
+  key: "source" | "priority" | "review" | "new" | "archive" | "winner" | "new_contest" | "irrelevant" | "not_contest";
   title: string;
   name: string;
   href: string;
@@ -81,4 +82,21 @@ export function buildGmailLabelJumps(
     jumps.push({ key, title, name, href });
   }
   return jumps;
+}
+
+export function buildContestGmailLabelJumps(sourceLabelId: string, labels: ContestLabels | null, linkRoot: string, catalog: readonly GmailLabel[]): readonly GmailLabelJump[] {
+  const refs: readonly [GmailLabelJump["key"], string, string | undefined][] = [
+    ["source", "Source", sourceLabelId],
+    ["winner", "Winner", labels?.winner],
+    ["new_contest", "New contest", labels?.new_contest],
+    ["irrelevant", "Irrelevant", labels?.irrelevant],
+    ["archive", "Contest archive", "contest-archive"],
+    ["not_contest", "Not contest", "not-contest"],
+  ];
+  return refs.flatMap(([key, title, ref]) => {
+    if (!ref) return [];
+    const name = catalog.find(label => label.id === ref || label.name === ref)?.name;
+    const href = name && gmailLabelUrl(name, linkRoot);
+    return name && href ? [{ key, title, name, href }] : [];
+  });
 }

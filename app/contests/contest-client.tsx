@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatRunTime } from "@/app/run-status";
 import { MAX_CONTEST_MODEL_CALLS } from "@/src/server/gmail/contest-usage";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ContestCategory } from "@/src/server/gmail/contest-classify";
@@ -61,7 +62,7 @@ export function ContestResults({ results, trial, busy, onCorrect }: {
   results: readonly ContestResultRow[];
   trial: boolean;
   busy: boolean;
-  onCorrect: (messageId: string, category: ContestCategory) => Promise<void>;
+  onCorrect?: (messageId: string, category: ContestCategory) => Promise<void>;
 }) {
   const sorted = [...results].sort((a, b) => b.explicitWinProbability - a.explicitWinProbability);
   if (!sorted.length) return <p>No contest results in this {trial ? "trial batch" : "view"}.</p>;
@@ -74,14 +75,14 @@ export function ContestResults({ results, trial, busy, onCorrect }: {
 
 function ContestResult({ result, trial, busy, onCorrect }: {
   result: ContestResultRow; trial: boolean; busy: boolean;
-  onCorrect: (messageId: string, category: ContestCategory) => Promise<void>;
+  onCorrect?: (messageId: string, category: ContestCategory) => Promise<void>;
 }) {
   const effectiveCategory = result.manualCategory ?? result.category;
   const [category, setCategory] = useState<ContestCategory>(effectiveCategory);
   const protectedMessage = result.labelStatus === "protected";
   async function correct(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    await onCorrect(result.gmailMessageId, category);
+    await onCorrect?.(result.gmailMessageId, category);
   }
   return <article className="contest-result">
     <div className="contest-result-heading">
@@ -95,8 +96,9 @@ function ContestResult({ result, trial, busy, onCorrect }: {
     </dl>
     <p>Model category: <strong>{CATEGORY_NAMES[result.category]}</strong>{result.manualCategory && <> · Your correction: <strong>{CATEGORY_NAMES[result.manualCategory]}</strong></>}</p>
     <p>Claim deadline: {result.claimDeadline || "Unknown"}</p>
+    <p className="contest-muted">Model: {result.model} · Prompt: {result.promptVersion} · {result.inputTokens} input tokens · {result.outputTokens} output tokens</p>
     <p className="contest-muted">{trial ? "Trial preview. No Gmail labels or notifications were sent." : `Gmail labels: ${result.labelStatus}. Notification: ${result.notificationStatus ?? "not sent"}.`}</p>
-    {!trial && <form className="contest-correction" onSubmit={(event) => { void correct(event); }}>
+    {!trial && onCorrect && <form className="contest-correction" onSubmit={(event) => { void correct(event); }}>
       <label>Correct category for {result.subject || "this message"}
         <select value={category} disabled={busy || protectedMessage} onChange={(event) => setCategory(event.target.value as ContestCategory)}>
           {CATEGORIES.map((value) => <option key={value} value={value}>{CATEGORY_NAMES[value]}</option>)}
@@ -146,7 +148,12 @@ async function requestJson<T>(path: string, method = "GET", body?: unknown, sign
   return await response.json() as T;
 }
 
-export function ContestClient() {
+export function ContestClient({ onRunChange, onScanningChange, connected = true, configured = true }: {
+  onRunChange?: (run: ContestRunSummary | null) => void;
+  onScanningChange?: (scanning: boolean) => void;
+  connected?: boolean;
+  configured?: boolean;
+} = {}) {
   const [overview, setOverview] = useState<ContestOverview | null>(null);
   const [labels, setLabels] = useState<ContestLabels>(EMPTY_LABELS);
   const [busy, setBusy] = useState(true);
@@ -159,6 +166,9 @@ export function ContestClient() {
   const [preview, setPreview] = useState<readonly ContestResultRow[] | null>(null);
   const [run, setRun] = useState<ContestRunSummary | null>(null);
   const [cursor, setCursor] = useState<{ token: string; trial: boolean } | null>(null);
+
+  useEffect(() => { onRunChange?.(run); }, [run, onRunChange]);
+  useEffect(() => { onScanningChange?.(scanning || run?.status === "running"); }, [scanning, run?.status, onScanningChange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -257,8 +267,9 @@ export function ContestClient() {
     finally { setBusy(false); }
   }
 
-  const disabled = busy || run?.status === "running" || !overview || overview.disabled;
-  const scanBlocker = contestScanBlocker(overview);
+  const disabled = busy || run?.status === "running" || !overview || overview.disabled || !connected;
+  const scanBlocker = !connected ? "Connect or reconnect Gmail before scanning."
+    : !configured ? "Save your source label in Configuration before scanning." : contestScanBlocker(overview);
   const scanDisabled = disabled || scanBlocker !== null;
   const visibleResults = preview ?? overview?.results ?? [];
   return <div className="contest-content" aria-busy={busy}>
@@ -267,7 +278,8 @@ export function ContestClient() {
     {!overview && busy && <p role="status">Loading contest settings…</p>}
     {overview?.disabled && <p className="alert">Contest scanning is disabled in this app profile.</p>}
     <section className="card contest-controls" aria-labelledby="contest-scan-heading">
-      <h2 id="contest-scan-heading">Scan contest mail</h2>
+      <p className="step">02 · BOUNDED SYNC</p>
+      <h2 id="contest-scan-heading">Classify the next batch with Jev</h2>
       <p>Uses your existing <Link href="/configuration">source label and sender configuration</Link>. Each scan or trial classifies a new batch of at most {MAX_CONTEST_MODEL_CALLS} messages. A live scan may also retry saved label or notification work. Every eligible unprocessed message sends a bounded body to TypeSafe Jev for classification when you start a scan or trial. Contest scans do not require a keyword match.</p>
       <p>Model: {overview ? overview.modelConfigured ? "Configured" : "Not configured" : "Checking"}. Notifications: {overview ? overview.notificationsConfigured ? "Configured and opted in" : "Disabled until configured and opted in" : "Checking"}.</p>
       <p className="contest-muted">Winner notifications require an explicit win probability of at least 90%. Trial previews never send notifications.</p>
@@ -279,21 +291,10 @@ export function ContestClient() {
         <button className="button secondary-ink" disabled={busy} onClick={() => { void refresh(); }}>Refresh results</button>
       </div>
       <p className="contest-muted">A trial previews classifications without changing Gmail labels. A live scan applies the configured contest labels. Filed mail moves out of Inbox and gets contest-archive. Winner and New Contest keep their unread status under their Jev labels. Whitelist mail goes to not-contest and is marked read. AI-classified Irrelevant and blocklisted mail goes to the Irrelevant label and is marked read. Starred and invalid-sender mail stay protected. Reused classifications retain their saved category; failed requests remain retryable. Missing filing labels are created only during live scans.</p>
-      {run && <div className="contest-run" role="status">
-        <h3>{run.trial ? "Latest trial" : "Latest scan"}: {run.status.replaceAll("_", " ")}</h3>
-        <ContestProgress run={run} />
-        <p>{run.scanned} scanned · {run.candidates} candidates · {run.classified} classified · {run.skipped} skipped · {run.failed} failed</p>
-        <p>{run.inputTokens} input tokens · {run.outputTokens} output tokens · {formatContestCost(run.estimatedCostUsd)}</p>
-        <p className="contest-muted">Token counts cover successful model responses. Failed-request charges are unknown.</p>
-        {run.status === "bounded_incomplete" && <p>The safety limit was reached. Continue the batch when ready.</p>}
-        {(run.status === "failed" || run.status === "partial_failure") && <p>Some work failed. Refresh results before starting another scan.</p>}
-        {run.errorCode === "scan_interrupted" && <p>The scan stopped reporting progress. Its unfinished batch can be retried after the lease expires.</p>}
-        {run.errorCode === "gmail_reauthorization_required" && <p><Link href="/">Reconnect Gmail from the dashboard</Link> before retrying.</p>}
-      </div>}
     </section>
     <section className="card" aria-labelledby="contest-labels-heading">
       <h2 id="contest-labels-heading">Contest destination labels</h2>
-      <p>Enter three distinct existing Gmail label names or IDs. Entry confirmations and notifications or updates always use the Irrelevant destination. Nested labels use a slash, for example jev/winner. A Gmail URL fragment such as jev%2Fwinner is also accepted. These destinations belong to contest scans; the existing deterministic sync keeps its configured categories.</p>
+      <p>Enter three distinct existing Gmail label names or IDs. Entry confirmations and notifications or updates always use the Irrelevant destination. Nested labels use a slash, for example jev/winner. A Gmail URL fragment such as jev%2Fwinner is also accepted.</p>
       <form className="contest-label-form" onSubmit={(event) => { void configure(event); }}>
         <div className="contest-label-fields">
           {CONTEST_DESTINATIONS.map((category) => <label key={category}>{CATEGORY_NAMES[category]}
@@ -310,4 +311,24 @@ export function ContestClient() {
       <ContestResults results={visibleResults} trial={preview !== null} busy={disabled} onCorrect={correct} />
     </section>
   </div>;
+}
+
+export function ContestRunActivity({ run, showDetails = false }: { run: ContestRunSummary | null; showDetails?: boolean }) {
+  if (!run) return null;
+  return <article className="contest-run-activity">
+    <div className="contest-run-activity-heading">
+      {showDetails ? <strong>Jev {run.trial ? "trial" : "scan"}</strong>
+        : <Link className="contest-run-link" href={`/runs/${run.id}`}>Jev {run.trial ? "trial" : "scan"}</Link>}
+      <span className={`contest-status ${run.status}`}>{run.status.replaceAll("_", " ")}</span>
+      <time dateTime={run.startedAt}>{formatRunTime(run.startedAt)}</time>
+    </div>
+    {showDetails && <ContestProgress run={run} />}
+    <p>{run.scanned} scanned · {run.candidates} candidates · {run.classified} classified · {run.skipped} skipped · {run.failed} failed</p>
+    <p>{run.inputTokens} input tokens · {run.outputTokens} output tokens · {formatContestCost(run.estimatedCostUsd)}</p>
+    {showDetails && <p className="contest-muted">Token counts cover successful model responses. Failed-request charges are unknown.</p>}
+    {showDetails && run.status === "bounded_incomplete" && <p>This bounded batch finished. Continue from the dashboard to process the next batch.</p>}
+    {showDetails && (run.status === "failed" || run.status === "partial_failure") && <p>Some work failed. Refresh results on the dashboard before continuing.</p>}
+    {run.errorCode === "scan_interrupted" && <p>The scan stopped reporting progress. Its unfinished batch can be retried after the lease expires.</p>}
+    {run.errorCode === "gmail_reauthorization_required" && <p><Link href="/">Reconnect Gmail from the dashboard</Link> before retrying.</p>}
+  </article>;
 }

@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { BrandLogo } from "@/app/brand-logo";
-import { gmailConnection, syncRun, triageConfig } from "@/db/schema";
+import { contestSettings, gmailConnection, triageConfig } from "@/db/schema";
 import { Dashboard, type DashboardState } from "@/app/dashboard";
 import { ownerUserFromSession } from "@/app/owner-user";
 import { SignOutButton } from "@/app/auth/sign-out-button";
@@ -9,10 +9,11 @@ import { getServerConfig } from "@/src/config/server";
 import { OwnerPreferencesService } from "@/src/server/config/owner-preferences";
 import { getSession } from "@/src/server/auth/session";
 import { database, withDemoOwnerScope } from "@/src/server/db";
-import { sqlNotDemoMockSeedSync } from "@/src/server/demo/seed-mock-queues";
+import { ContestRunDetailService } from "@/src/server/gmail/contest-run-detail";
 import { inspectGmailConnection } from "@/src/server/gmail/connection-health";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
-import { buildGmailLabelJumps } from "@/src/server/gmail/gmail-url";
+import { buildContestGmailLabelJumps, buildGmailLabelJumps } from "@/src/server/gmail/gmail-url";
+import type { ContestLabels } from "@/src/server/gmail/contest-contracts";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
   const db = database();
   // Demo RLS uses one PoolClient per request — do not parallelize queries on it.
   const connection = await db
-    .select({ ownerAuthUserId: gmailConnection.ownerAuthUserId })
+    .select({ ownerAuthUserId: gmailConnection.ownerAuthUserId, googleSubject: gmailConnection.googleSubject })
     .from(gmailConnection)
     .where(and(eq(gmailConnection.ownerAuthUserId, ownerId), isNull(gmailConnection.disconnectedAt)))
     .limit(1);
@@ -42,24 +43,7 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
     .where(eq(triageConfig.ownerAuthUserId, ownerId))
     .orderBy(desc(triageConfig.version))
     .limit(1);
-  const runs = await db
-    .select({
-      id: syncRun.id,
-      status: syncRun.status,
-      trial: syncRun.trial,
-      startedAt: syncRun.startedAt,
-      finishedAt: syncRun.finishedAt,
-      errorSummary: syncRun.errorSummary,
-      nextPageToken: syncRun.nextPageToken,
-    })
-    .from(syncRun)
-    .where(and(
-      eq(syncRun.ownerAuthUserId, ownerId),
-      // Seeded review/demotion fixture sync — not visitor sync activity.
-      sqlNotDemoMockSeedSync(),
-    ))
-    .orderBy(desc(syncRun.startedAt))
-    .limit(30);
+  const runs = getServerConfig().demoProfile ? [] : await new ContestRunDetailService(db).history(ownerId);
   const gmailMessageLinkRoot = await new OwnerPreferencesService(db).getGmailMessageLinkRoot(ownerId);
 
   const connectionHealth = await inspectGmailConnection(
@@ -71,7 +55,13 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
   if (connectionHealth.provider && configuration[0]) {
     try {
       const catalog = await connectionHealth.provider.listLabels();
-      gmailLabelJumps = [...buildGmailLabelJumps(configuration[0], gmailMessageLinkRoot, catalog)];
+      if (getServerConfig().demoProfile) {
+        gmailLabelJumps = buildGmailLabelJumps(configuration[0], gmailMessageLinkRoot, catalog);
+      } else if (connection[0]) {
+        const [settings] = await db.select({ labels: contestSettings.labels }).from(contestSettings)
+          .where(and(eq(contestSettings.ownerAuthUserId, ownerId), eq(contestSettings.googleSubject, connection[0].googleSubject))).limit(1);
+        gmailLabelJumps = buildContestGmailLabelJumps(configuration[0].sourceLabelId, settings ? settings.labels as ContestLabels : null, gmailMessageLinkRoot, catalog);
+      }
     } catch {
       gmailLabelJumps = [];
     }
@@ -83,12 +73,7 @@ async function getDashboardState(ownerId: string): Promise<DashboardState> {
     configured,
     gmailMessageLinkRoot,
     gmailLabelJumps,
-    runs: runs.map((run) => ({
-      ...run,
-      trial: run.trial,
-      startedAt: run.startedAt.toISOString(),
-      finishedAt: run.finishedAt?.toISOString() ?? null,
-    })),
+    runs,
   };
 }
 
@@ -136,7 +121,7 @@ export default async function Home() {
     <h1>Email Triage</h1>
     <p>
       {demoProfile
-        ? "Try the deterministic triage path against a fixture mailbox. No Google account or model calls required."
+        ? "Explore a fixture mailbox and seeded review decisions. No Google account or model calls required."
         : "This workspace is available only to the configured owner. Sign in with the owner account to continue."}
     </p>
     <Link className="button" href="/auth/sign-in">{demoProfile ? "Start demo" : "Sign in"}</Link>

@@ -1,10 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildContestGmailLabelJumps,
   buildGmailLabelJumps,
   gmailLabelUrl,
   gmailMessageUrl,
   gmailThreadUrl,
 } from "../server/gmail/gmail-url";
+
+describe("Jev label shortcuts", () => {
+  test("resolves Jev destination IDs to Gmail names and omits missing labels", () => {
+    const links = buildContestGmailLabelJumps("INBOX", {
+      winner: "Label_w", new_contest: "Label_n", irrelevant: "Label_missing",
+      entry_confirmation: "Label_missing", notification_update: "Label_missing",
+    }, "https://mail.google.com/mail/u/2/", [
+      { id: "INBOX", name: "INBOX" },
+      { id: "Label_w", name: "jev/winner" },
+      { id: "Label_n", name: "jev/new" },
+      { id: "Label_a", name: "contest-archive" },
+    ]);
+    expect(links.map(link => link.key)).toEqual(["source", "winner", "new_contest", "archive"]);
+    expect(links.find(link => link.key === "winner")?.href).toBe("https://mail.google.com/mail/u/2/#label/jev%2Fwinner");
+  });
+});
 
 describe("gmailMessageUrl", () => {
   test("uses the configured message link root", () => {

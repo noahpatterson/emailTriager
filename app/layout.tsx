@@ -5,10 +5,11 @@ import { InsecureLocalBanner } from "@/app/insecure-local-banner";
 import { isInsecureLocalDevRequested } from "@/src/server/auth/local-dev-flags";
 import { isDemoProfile } from "@/src/server/demo/ai-gate";
 import "./globals.css";
+import "./contests/contest.css";
 
 export const metadata: Metadata = {
   title: "Email Triage",
-  description: "Private deterministic Gmail triage console",
+  description: "Private Gmail triage console with TypeSafe Jev",
   icons: {
     icon: [{ url: "/icon.png", type: "image/png", sizes: "192x192" }],
     apple: [{ url: "/apple-icon.png", type: "image/png", sizes: "180x180" }],
