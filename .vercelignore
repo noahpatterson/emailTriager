@@ -1,0 +1,15 @@
+.env*
+**/.env*
+**/*.tfstate*
+**/*.tfvars*
+**/*.tfplan
+**/.terraform/**
+**/.terraform.lock.hcl
+services/**
+.audit/**
+docs/private/**
+.agents/**
+.codex/**
+.aws/**
+.git/**
+coverage/**

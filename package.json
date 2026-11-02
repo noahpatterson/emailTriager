@@ -19,7 +19,10 @@
     "db:check": "bun run scripts/check-migrations.ts",
     "db:check:demo": "bun run scripts/check-demo-migrations.ts",
     "demo:cleanup": "bun run scripts/cleanup-demo.ts",
-    "retention:run": "bun run scripts/run-retention.ts"
+    "retention:run": "bun run scripts/run-retention.ts",
+    "personal:check": "bun run scripts/check-personal-readiness.ts",
+    "personal:migrate": "bun run scripts/migrate-personal.ts",
+    "personal:role": "bun run scripts/provision-personal-role.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.23",

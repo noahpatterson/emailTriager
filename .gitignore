@@ -17,3 +17,5 @@ docs/private/
 !*.tfvars.example
 services/.env
 .vercel
+!services/personal/.env.example
+*.tfplan
