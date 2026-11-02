@@ -20,11 +20,8 @@ export async function GET(request: Request): Promise<Response> {
       url.searchParams.get("state") ?? "",
     );
     return Response.redirect(publicAppUrl(getServerConfig().googleRedirectUri, "/"));
-  } catch (error) {
-    console.error(
-      "GET /api/oauth/google/callback failed",
-      error instanceof Error ? error.message : error,
-    );
+  } catch {
+    console.error("Google OAuth callback failed");
     return sanitizedErrorResponse();
   }
 }

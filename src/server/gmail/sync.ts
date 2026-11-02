@@ -497,13 +497,9 @@ export class MessageSyncService {
                 catalog,
               ),
             });
-          } catch (error) {
+          } catch {
             failureCount += 1;
-            console.error(
-              "Message recovery failed",
-              state.gmailMessageId,
-              error instanceof Error ? error.message : error,
-            );
+            console.error("Message recovery failed");
             await this.db
               .update(gmailMessageState)
               .set({
@@ -690,9 +686,9 @@ export class MessageSyncService {
             reason,
             proposedLabelId,
           });
-        } catch (error) {
+        } catch {
           failureCount += 1;
-          console.error("Message processing failed", messageId, error instanceof Error ? error.message : error);
+          console.error("Message processing failed");
           const failReason = parsed ? "Message processing failed" : "Message could not be parsed";
           await this.db
             .insert(messageProcessing)
@@ -746,8 +742,8 @@ export class MessageSyncService {
         })
         .where(eq(syncRun.id, runId));
       return { runId, status, trial, exhausted: result.exhausted, nextPageToken, results };
-    } catch (error) {
-      console.error("Synchronization failed", runId, error instanceof Error ? error.message : error, error);
+    } catch {
+      console.error("Synchronization failed");
       await this.db
         .update(syncRun)
         .set({
