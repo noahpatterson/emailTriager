@@ -1,3 +1,4 @@
+import { assertLiveGmailAllowed, getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 import "server-only";
 import { eq, sql } from "drizzle-orm";
 import { gmailConnection, oauthState } from "@/db/schema";
@@ -16,7 +17,9 @@ import {
 import { fetchWithRetry } from "@/src/server/http/fetch-with-retry";
 import { ensureOwnerBinding as writeOwnerBinding } from "@/src/server/owner-binding";
 
-const SCOPE = "openid https://www.googleapis.com/auth/gmail.modify";
+function googleScope(): string {
+  return `openid https://www.googleapis.com/auth/gmail.${getPersonalDeploymentPolicy()?.gmailWritesEnabled === false ? "readonly" : "modify"}`;
+}
 const STATE_LIFETIME_MS = 10 * 60 * 1000;
 
 type GoogleTokens = {
@@ -27,9 +30,13 @@ type GoogleTokens = {
 
 export class GoogleConnectionService {
   constructor(
-    private readonly db: Database = database(),
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly providedDb?: Database,
+    private readonly fetcher: (input: string | URL | Request, init?: RequestInit) => Promise<Response> = fetch,
   ) {}
+
+  private get db(): Database {
+    return this.providedDb ?? database();
+  }
 
   /** Ensures the singleton owner_binding row exists for this owner (FK target for gmail_connection). */
   async ensureOwnerBinding(ownerId: string): Promise<void> {
@@ -37,6 +44,7 @@ export class GoogleConnectionService {
   }
 
   async begin(ownerId: string): Promise<{ authorizationUrl: string }> {
+    assertLiveGmailAllowed();
     const config = getServerConfig();
     await this.ensureOwnerBinding(ownerId);
     const state = randomBase64Url();
@@ -55,7 +63,7 @@ export class GoogleConnectionService {
       client_id: config.googleClientId,
       redirect_uri: config.googleRedirectUri,
       response_type: "code",
-      scope: SCOPE,
+      scope: googleScope(),
       state,
       code_challenge: sha256Base64Url(verifier),
       code_challenge_method: "S256",
@@ -67,6 +75,7 @@ export class GoogleConnectionService {
 
   async complete(ownerId: string, code: string, state: string): Promise<void> {
     if (!code || !state) throw new Error("Missing callback parameters");
+    assertLiveGmailAllowed();
     const config = getServerConfig();
     const stateHash = sha256Base64Url(state);
     const processingToken = randomBase64Url();
@@ -85,6 +94,7 @@ export class GoogleConnectionService {
         "https://oauth2.googleapis.com/token",
         {
           method: "POST",
+          cache: "no-store",
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
             code,
@@ -107,6 +117,7 @@ export class GoogleConnectionService {
         this.fetcher,
         "https://openidconnect.googleapis.com/v1/userinfo",
         {
+          cache: "no-store",
           headers: { authorization: `Bearer ${tokens.access_token}` },
         },
       );

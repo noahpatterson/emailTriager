@@ -1,3 +1,4 @@
+import { assertLiveGmailAllowed, getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { gmailConnection } from "@/db/schema";
@@ -22,8 +23,10 @@ export async function refreshGoogleAccessToken(
   credentials: GoogleRefreshCredentials,
   fetcher: Fetcher = fetch,
 ): Promise<string> {
+  assertLiveGmailAllowed();
   const response = await fetchWithRetry(fetcher, "https://oauth2.googleapis.com/token", {
     method: "POST",
+    cache: "no-store",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: credentials.clientId,
@@ -31,7 +34,7 @@ export async function refreshGoogleAccessToken(
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
-  });
+  }, getPersonalDeploymentPolicy() ? { timeoutMs: 5000, maxAttempts: 2 } : undefined);
   const body = await response.json().catch(() => null) as {
     access_token?: unknown;
     error?: unknown;
@@ -53,6 +56,7 @@ export async function googleProviderForOwner(ownerId: string): Promise<GmailProv
     return seedGmailFakeFromCorpus();
   }
 
+  assertLiveGmailAllowed();
   const [row] = await database()
     .select({ encryptedRefreshToken: gmailConnection.encryptedRefreshToken })
     .from(gmailConnection)

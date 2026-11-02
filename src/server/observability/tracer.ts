@@ -1,3 +1,4 @@
+import { getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 import "server-only";
 import { context, SpanStatusCode, type Tracer } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
@@ -102,7 +103,7 @@ export function getObservabilityConfig(env: EnvMap = process.env): Observability
   const serviceName = trim(env.OTEL_SERVICE_NAME) ?? DEFAULT_SERVICE_NAME;
   const exporterFlag = trim(env.OTEL_EXPORTER)?.toLowerCase();
 
-  if (exporterFlag === "none") {
+  if (getPersonalDeploymentPolicy(env) || exporterFlag === "none") {
     return { exporter: "none", serviceName };
   }
 
@@ -198,6 +199,7 @@ export type CreateAuditTracerOptions = Readonly<{
  * When exporter is none and no test exporter is injected, callbacks run without spans.
  */
 export function createAuditTracer(options: CreateAuditTracerOptions = {}): AuditTracer {
+  if (getPersonalDeploymentPolicy()) return createNoopTracer();
   const config = options.config ?? getObservabilityConfig();
   const exporter = options.spanExporter
     ?? (config.exporter === "otlp" && config.otlp

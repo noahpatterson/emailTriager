@@ -17,6 +17,7 @@ import { addContestTokenUsage, MAX_CONTEST_MODEL_CALLS } from "./contest-usage";
 import { estimateContestApiCost } from "./contest-cost";
 import { extractContestClaimDeadline } from "./contest-deadline";
 import { createContestNotifier } from "./contest-notify";
+import { getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 
 export class ContestClientError extends Error {
   constructor(readonly code: string, readonly status: number = 400) { super(code); }
@@ -250,7 +251,7 @@ export class ContestScanService {
       const bundle = options.trial ? null : await this.prepareFilingLabels(context, lease, provider, catalog);
       if (!options.trial) {
         const saved = await this.store.recoverable(context, this.notifications.configured());
-        for (const stored of saved) {
+        for (const stored of getPersonalDeploymentPolicy() ? saved.slice(0, 1) : saved) {
           try {
             if (!await this.store.renew(lease)) throw new ContestLeaseLostError();
             await this.apply(context, lease, provider, stored, bundle ?? undefined);
@@ -260,8 +261,9 @@ export class ContestScanService {
         }
       }
       if (!await this.store.renew(lease)) throw new ContestLeaseLostError();
-      const page = await provider.listMessages({ sourceLabelId, pageToken: options.pageToken, maxResults: MAX_PAGE_MESSAGES });
-      if (page.messages.length > MAX_PAGE_MESSAGES) throw new ContestClientError("oversized_page");
+      const pageSize = getPersonalDeploymentPolicy() ? 3 : MAX_PAGE_MESSAGES;
+      const page = await provider.listMessages({ sourceLabelId, pageToken: options.pageToken, maxResults: pageSize });
+      if (page.messages.length > pageSize) throw new ContestClientError("oversized_page");
       const nextPageToken = page.nextPageToken ?? null;
       const initialEstimate = !carried && typeof page.resultSizeEstimate === "number" && Number.isSafeInteger(page.resultSizeEstimate) && page.resultSizeEstimate >= 0
         ? page.resultSizeEstimate : run.progress.totalEstimate;

@@ -1,3 +1,4 @@
+import { getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 import "server-only";
 import type { ContestCategory } from "./contest-classify";
 
@@ -45,7 +46,7 @@ export function getContestNotificationConfig(env: Readonly<Record<string, string
     && (rawThreshold === undefined || rawThreshold.trim() !== "") && Number.isFinite(winnerThreshold) && winnerThreshold >= 0.9 && winnerThreshold <= 1);
   return {
     configured,
-    enabled: configured && env.CONTEST_NOTIFICATIONS_ENABLED === "true" && env.CONTEST_ACCURACY_VALIDATED === "true",
+    enabled: !getPersonalDeploymentPolicy(env) && configured && env.CONTEST_NOTIFICATIONS_ENABLED === "true" && env.CONTEST_ACCURACY_VALIDATED === "true",
     server, topic, accessToken, winnerThreshold,
   };
 }
@@ -73,9 +74,9 @@ export function createContestNotifier(options: Readonly<{
   const timeoutMs = options.timeoutMs ?? 10_000;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 60_000) throw new RangeError("Notification timeout must be between 0 and 60000 milliseconds");
   return {
-    configured: (): boolean => config.enabled,
+    configured: (): boolean => !getPersonalDeploymentPolicy() && config.enabled,
     async notify(ownerId: string, googleSubject: string, result: ContestNotificationResult): Promise<ContestNotificationOutcome> {
-      if (!config.enabled) return "disabled";
+      if (getPersonalDeploymentPolicy() || !config.enabled) return "disabled";
       if ((result.manualCategory ?? result.category) !== "winner" || result.labelStatus !== "applied"
         || !validProbability(result.explicitWinProbability) || !validProbability(result.claimActionProbability)
         || result.explicitWinProbability < config.winnerThreshold || !gmailLink(result.gmailUrl)) return "ineligible";

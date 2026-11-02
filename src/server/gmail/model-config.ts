@@ -1,3 +1,4 @@
+import { assertExternalAiAllowed } from "@/src/config/deployment-policy";
 import "server-only";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
@@ -38,6 +39,7 @@ export function resolveModelApiKey(
 
 /** Model connection for audit/judge. Env-backed; Zod stays out of this path. */
 export function getModelConfig(): ModelRuntimeConfig {
+  assertExternalAiAllowed();
   return {
     provider: optional("MODEL_PROVIDER") ?? "openai-compatible",
     modelName: required("MODEL_NAME"),
@@ -47,6 +49,7 @@ export function getModelConfig(): ModelRuntimeConfig {
 }
 
 export function createJudgeModel(config: ModelRuntimeConfig = getModelConfig()): LanguageModel {
+  assertExternalAiAllowed();
   const provider = createOpenAICompatible({
     name: config.provider,
     baseURL: config.baseUrl,

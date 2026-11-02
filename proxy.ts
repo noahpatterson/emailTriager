@@ -1,3 +1,4 @@
+import { assertDeploymentEnvironment } from "@/src/config/deployment-policy";
 import { NextRequest, NextResponse } from "next/server";
 import {
   assertInsecureLocalDevAllowed,
@@ -45,6 +46,7 @@ function enforceAllowedCidrs(request: NextRequest): NextResponse | null {
 
 export default async function proxy(request: NextRequest) {
   try {
+    assertDeploymentEnvironment();
     const driver =
       process.env.DATABASE_DRIVER?.trim().toLowerCase() || "neon-http";
     assertInsecureLocalDevAllowed(driver);

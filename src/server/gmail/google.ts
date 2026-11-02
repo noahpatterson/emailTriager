@@ -1,3 +1,4 @@
+import { assertLiveGmailAllowed, assertGmailWritesAllowed, getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 import type { GmailLabel, GmailPage, GmailProvider, LabelChange } from "./contracts";
 import { fetchWithRetry } from "@/src/server/http/fetch-with-retry";
 
@@ -6,10 +7,12 @@ type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Re
 export class GoogleGmailProvider implements GmailProvider {
   constructor(private readonly accessToken: string, private readonly fetcher: Fetcher = fetch) {}
   private async request(path: string, init?: RequestInit): Promise<Response> {
+    assertLiveGmailAllowed();
     const response = await fetchWithRetry(this.fetcher, `https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
       ...init,
+      cache: "no-store",
       headers: { authorization: `Bearer ${this.accessToken}`, "content-type": "application/json", ...init?.headers },
-    });
+    }, getPersonalDeploymentPolicy() ? { timeoutMs: 5000, maxAttempts: 2 } : undefined);
     if (!response.ok) {
       throw new Error(`Gmail request failed (${response.status})`);
     }
@@ -37,12 +40,14 @@ export class GoogleGmailProvider implements GmailProvider {
       .map((label) => ({ id: label.id, name: label.name }));
   }
   async modifyLabels(change: LabelChange): Promise<void> {
+    assertGmailWritesAllowed();
     await this.request(`messages/${encodeURIComponent(change.messageId)}/modify`, {
       method: "POST",
       body: JSON.stringify({ addLabelIds: change.addLabelIds, removeLabelIds: change.removeLabelIds }),
     });
   }
   async createLabel(name: string): Promise<GmailLabel> {
+    assertGmailWritesAllowed();
     if (!name.trim()) throw new Error("Gmail label name must not be empty");
     let body: unknown;
     try {
@@ -60,9 +65,11 @@ export class GoogleGmailProvider implements GmailProvider {
     return { id: body.id, name: body.name };
   }
   async trashMessage(messageId: string): Promise<void> {
+    assertGmailWritesAllowed();
     await this.request(`messages/${encodeURIComponent(messageId)}/trash`, { method: "POST" });
   }
   async revoke(): Promise<void> {
-    await fetchWithRetry(this.fetcher, `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(this.accessToken)}`, { method: "POST" });
+    assertLiveGmailAllowed();
+    await fetchWithRetry(this.fetcher, `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(this.accessToken)}`, { method: "POST", cache: "no-store" });
   }
 }

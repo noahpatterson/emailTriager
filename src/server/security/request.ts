@@ -38,6 +38,15 @@ export function requireSameOrigin(request: Request): void {
   }
 
   if (origin.origin !== expected.origin) throw new Error("Invalid request origin");
+  if (process.env.APP_PROFILE?.trim() === "personal") {
+    let configuredOrigin: string;
+    try {
+      configuredOrigin = new URL(process.env.GOOGLE_REDIRECT_URI ?? "").origin;
+    } catch {
+      throw new Error("Invalid request origin");
+    }
+    if (origin.origin !== configuredOrigin) throw new Error("Invalid request origin");
+  }
 }
 
 export function sanitizedErrorResponse(status = 400): Response {

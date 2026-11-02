@@ -6,6 +6,9 @@ import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { MessageSyncService } from "@/src/server/gmail/sync";
 import { clientIpFromHeaders } from "@/src/server/security/allowed-ips";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
+import { getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
+
+export const maxDuration = 300;
 
 type SyncBody = Readonly<{ trial?: unknown; pageToken?: unknown }>;
 
@@ -29,6 +32,10 @@ export async function POST(request: Request): Promise<Response> {
         if (parsed && typeof parsed === "object") body = parsed as SyncBody;
       }
       const trial = body.trial === true;
+      const policy = getPersonalDeploymentPolicy();
+      if (policy && !policy.gmailWritesEnabled && !trial) {
+        return Response.json({ error: "gmail_writes_disabled", message: "Use Run trial. Gmail changes are disabled in this deployment." }, { status: 403 });
+      }
       const pageToken = typeof body.pageToken === "string" && body.pageToken.length > 0 ? body.pageToken : null;
       const result = await new MessageSyncService(googleProviderForOwner, database()).start(owner.userId, {
         trial,

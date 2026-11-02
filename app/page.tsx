@@ -14,6 +14,7 @@ import { inspectGmailConnection } from "@/src/server/gmail/connection-health";
 import { googleProviderForOwner } from "@/src/server/gmail/factory";
 import { buildContestGmailLabelJumps, buildGmailLabelJumps } from "@/src/server/gmail/gmail-url";
 import type { ContestLabels } from "@/src/server/gmail/contest-contracts";
+import { getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,7 @@ export default async function Home() {
   const view = await loadHomeView();
   const demoProfile = getServerConfig().demoProfile;
   if (view.kind === "dashboard") {
-    return <Dashboard initialState={view.state} user={view.user} demoProfile={demoProfile} />;
+    return <Dashboard initialState={view.state} user={view.user} demoProfile={demoProfile} personalPolicy={getPersonalDeploymentPolicy()} />;
   }
 
   if (view.kind === "wrong-owner") {

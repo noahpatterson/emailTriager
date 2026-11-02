@@ -1,3 +1,4 @@
+import { assertPersonalServerConfig } from "./deployment-policy";
 import "server-only";
 import {
   assertInsecureLocalDevAllowed,
@@ -53,6 +54,7 @@ function retentionDays(): number {
 }
 
 export function getServerConfig(): ServerConfig {
+  assertPersonalServerConfig();
   const insecureLocalDev = isInsecureLocalDevRequested();
   const demoProfile = isDemoProfile();
   const databaseDriver = parseDatabaseDriver();

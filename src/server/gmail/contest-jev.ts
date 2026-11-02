@@ -1,3 +1,4 @@
+import { assertExternalAiAllowed } from "@/src/config/deployment-policy";
 import "server-only";
 import { z } from "zod";
 import { MAX_CONTEST_RESPONSE_TOKENS } from "./contest-usage";
@@ -101,6 +102,7 @@ export function createJevContestClassifier(options: Readonly<{
   timeoutMs?: number;
 }> = {}): ContestClassifier {
   return async (message): Promise<ContestClassification> => {
+    assertExternalAiAllowed();
     const apiKey = (options.apiKey ?? process.env.JEV_API_KEY)?.trim();
     const model = (options.model ?? process.env.JEV_MODEL ?? "jev-latest").trim();
     const timeoutMs = options.timeoutMs ?? JEV_TIMEOUT_MS;

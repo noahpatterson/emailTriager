@@ -25,6 +25,7 @@ import {
 } from "./message-snapshot";
 import { DatabaseMessageSnapshotStore } from "./message-snapshot-store";
 import { getServerConfig } from "@/src/config/server";
+import { getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
 
 export type SyncBounds = Readonly<{ maxPages: number; maxMessagesPerPage: number; maxTotalMessages: number }>;
 export type SyncResult = Readonly<{ exhausted: boolean; messageIds: readonly string[]; nextPageToken?: string }>;
@@ -68,6 +69,13 @@ const CLASSIFICATION_OUTCOMES = new Set<ClassificationOutcome>([
 ]);
 const SYNC_LEASE_SECONDS = 300;
 const TRIAL_BOUNDS: SyncBounds = { maxPages: 1, maxMessagesPerPage: 10, maxTotalMessages: 10 };
+
+export function syncBoundsFor(trial: boolean, configured: SyncBounds): SyncBounds {
+  const bounds = trial ? TRIAL_BOUNDS : configured;
+  return getPersonalDeploymentPolicy()
+    ? { maxPages: 1, maxMessagesPerPage: Math.min(bounds.maxMessagesPerPage, 5), maxTotalMessages: Math.min(bounds.maxTotalMessages, 5) }
+    : bounds;
+}
 
 export function syncStatusFor(
   exhausted: boolean,
@@ -283,7 +291,7 @@ export class MessageSyncService {
       ))
       .limit(1);
     if (!connection) throw new Error("Gmail is not connected");
-    let bounds = trial ? TRIAL_BOUNDS : config.bounds as SyncBounds;
+    let bounds = syncBoundsFor(trial, config.bounds as SyncBounds);
     const terms = config.terms as ClassificationTerms;
     const senderWhitelist = config.senderWhitelist as readonly string[];
     const senderBlocklist = config.senderBlocklist as readonly string[];

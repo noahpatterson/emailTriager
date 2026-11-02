@@ -11,6 +11,8 @@ import { DEMO_RESET_COPY } from "@/src/server/demo/session-token";
 import type { GmailLabelJump } from "@/src/server/gmail/gmail-url";
 import { ContestClient, ContestRunActivity, preferContestRun } from "@/app/contests/contest-client";
 import type { ContestRunSummary } from "@/src/server/gmail/contest-contracts";
+import type { PersonalDeploymentPolicy } from "@/src/config/deployment-policy";
+import { PersonalTrial } from "@/app/personal-trial";
 
 export type { RunStatus } from "@/app/run-status";
 export { formatRunTime, runMessage } from "@/app/run-status";
@@ -41,10 +43,12 @@ export function Dashboard({
   initialState,
   user,
   demoProfile = false,
+  personalPolicy = null,
 }: {
   initialState: DashboardState;
   user: DashboardUser;
   demoProfile?: boolean;
+  personalPolicy?: PersonalDeploymentPolicy | null;
 }) {
   const [state, setState] = useState(initialState);
   const [action, setAction] = useState<ActionState>("idle");
@@ -123,6 +127,8 @@ export function Dashboard({
           <p className="lede">
             {demoProfile
               ? "Explore fixture mail. Review and demotion use seeded mock verdicts."
+              : personalPolicy && !personalPolicy.externalAiEnabled
+                ? "Preview small Gmail batches using your configured rules. External AI is disabled."
               : "Classify bounded batches of Gmail messages with TypeSafe Jev."}
           </p>
           <OwnerNav active="home" />
@@ -168,7 +174,9 @@ export function Dashboard({
               ? "Only the configured source label is read. Email bodies, attachments, and OAuth tokens are never shown here."
               : state.reconnectRequired
                 ? "Google no longer accepts the saved authorization. Reconnect Gmail to restore access. Your configuration and run history will be kept."
-                : "Authorize read and label access for the owner account. Jev scans classify your source label and file messages in Gmail.")}
+                : personalPolicy && !personalPolicy.gmailWritesEnabled
+                  ? "Authorize readonly Gmail access for the owner account. Gmail changes are disabled in this deployment."
+                  : "Authorize read and label access for the owner account. Jev scans classify your source label and file messages in Gmail.")}
         </p>
         {demoProfile ? (
           <p className="field-help">Open Review for five seeded disagreements, or Demotions for one pending archive confirm. Live model audits stay off.</p>
@@ -189,6 +197,8 @@ export function Dashboard({
         <h2>Jev scans are owner-only</h2>
         <p>The public demo uses a fixture mailbox. Jev scans are available in the owner console.</p>
       </section>
+    ) : personalPolicy && !personalPolicy.externalAiEnabled ? (
+      <PersonalTrial connected={state.connected && action === "idle"} configured={state.configured} gmailMessageLinkRoot={state.gmailMessageLinkRoot} onRunningChange={setContestBusy} />
     ) : <ContestClient connected={state.connected && action !== "disconnecting"} configured={state.configured} onRunChange={updateContestRun} onScanningChange={setContestBusy} />}
 
     {state.gmailLabelJumps.length > 0 ? (

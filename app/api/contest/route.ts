@@ -2,6 +2,9 @@ import { withOwner } from "@/src/server/auth/owner";
 import { usesFixtureGmailProvider } from "@/src/server/gmail/app-profile";
 import { ContestClientError, ContestScanService, contestActionSchema } from "@/src/server/gmail/contest-scan";
 import { requireSameOrigin, sanitizedErrorResponse } from "@/src/server/security/request";
+import { getPersonalDeploymentPolicy } from "@/src/config/deployment-policy";
+
+export const maxDuration = 300;
 
 type OwnerScope = (run: (owner: { userId: string }) => Promise<Response>) => Promise<Response>;
 type ContestApiService = Pick<ContestScanService, "overview" | "configure" | "scan">;
@@ -20,6 +23,11 @@ export async function handleContestPost(request: Request, service?: ContestApiSe
       if (usesFixtureGmailProvider()) return Response.json({ error: "contest_disabled" }, { status: 403 });
       const parsed = contestActionSchema.safeParse(await request.json().catch(() => null));
       if (!parsed.success) return Response.json({ error: "invalid_request" }, { status: 400 });
+      const policy = getPersonalDeploymentPolicy();
+      if (parsed.data.action === "scan" && policy) {
+        if (!policy.externalAiEnabled) return Response.json({ error: "external_ai_disabled" }, { status: 403 });
+        if (!parsed.data.trial && !policy.gmailWritesEnabled) return Response.json({ error: "gmail_writes_disabled" }, { status: 403 });
+      }
       const active = service ?? new ContestScanService();
       try {
         return Response.json(parsed.data.action === "configure"
