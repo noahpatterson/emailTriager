@@ -363,3 +363,5 @@ Optional Neon / live-Gmail tests skip unless explicitly opted in. Never point te
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+For a private personal deployment with Vercel Authentication and Neon owner login, see [the personal Vercel guide](docs/operations/personal-vercel.md).
